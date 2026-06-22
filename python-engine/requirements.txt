@@ -1,0 +1,14 @@
+fastapi>=0.112.0
+uvicorn[standard]>=0.30.0
+langchain>=0.3.0
+langchain-openai>=0.3.0
+langgraph>=0.2.0
+grpcio>=1.64.0
+grpcio-tools>=1.64.0
+pgvector>=0.3.0
+psycopg2-binary>=2.9.0
+redis>=5.0.0
+litellm>=1.50.0
+structlog>=24.0.0
+pydantic>=2.8.0
+httpx>=0.28.0
