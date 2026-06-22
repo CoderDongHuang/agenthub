@@ -1,0 +1,132 @@
+syntax = "proto3";
+
+package agenthub;
+
+option java_package = "com.agenthub.grpc.stub";
+option java_multiple_files = true;
+
+// ==================== Agent 执行服务 ====================
+
+service AgentExecution {
+    // 双向流：Java 发送用户消息，Python 流式返回执行结果
+    rpc StreamExecute(stream ExecutionRequest) returns (stream ExecutionResponse);
+
+    // 单向调用：Java 通知 Python 停止某个会话
+    rpc StopSession(StopSessionRequest) returns (StopSessionResponse);
+}
+
+// ==================== 工具管理服务 ====================
+
+service ToolRegistry {
+    // Python → Java: 注册/更新工具定义
+    rpc SyncTool(ToolDef) returns (SyncResult);
+
+    // Python → Java: 批量同步工具列表
+    rpc SyncTools(stream ToolDef) returns (SyncResult);
+
+    // Java → Python: 检查工具是否可用
+    rpc CheckToolHealth(ToolHealthRequest) returns (ToolHealthResponse);
+}
+
+// ==================== 审批回调服务 ====================
+
+service ApprovalCallback {
+    // Java → Python: 审批结果通知
+    rpc OnApprovalResult(ApprovalResult) returns (Empty);
+}
+
+// ==================== 健康检查服务 ====================
+
+service HealthCheck {
+    // 双向健康检查
+    rpc Ping(PingRequest) returns (PingResponse);
+}
+
+// ==================== 消息定义 ====================
+
+message ExecutionRequest {
+    string session_id = 1;
+    string agent_id = 2;
+    string tenant_id = 3;
+    string user_id = 4;
+    string user_name = 5;
+    string message = 6;
+    string channel = 7;               // wechat / dingtalk / web / api
+    map<string, string> variables = 8; // 上下文变量
+}
+
+message ExecutionResponse {
+    enum Type {
+        THINKING = 0;       // 思考中
+        TEXT = 1;           // 文本片段（流式）
+        TOOL_START = 2;     // 开始调用工具
+        TOOL_END = 3;       // 工具调用完成
+        APPROVAL_WAIT = 4;  // 等待审批
+        ERROR = 5;          // 错误
+        COMPLETE = 6;       // 完成
+    }
+    Type type = 1;
+    string content = 2;
+    string tool_name = 3;
+    string tool_id = 4;
+    double token_count = 5;           // 本次消耗 Token 数
+    map<string, string> metadata = 6;
+}
+
+message StopSessionRequest {
+    string session_id = 1;
+    string reason = 2;
+}
+
+message StopSessionResponse {
+    bool success = 1;
+    string message = 2;
+}
+
+message ToolDef {
+    string tool_id = 1;
+    string name = 2;
+    string description = 3;
+    string category = 4;
+    string risk_level = 5;            // low / medium / high
+    int32 rate_limit = 6;             // 每天调用上限
+    int32 timeout_seconds = 7;
+    string json_schema = 8;           // 参数 JSON Schema
+    string python_module = 9;         // Python 模块路径
+}
+
+message SyncResult {
+    bool success = 1;
+    string message = 2;
+    int32 synced_count = 3;
+}
+
+message ToolHealthRequest {
+    string tool_id = 1;
+}
+
+message ToolHealthResponse {
+    bool healthy = 1;
+    string message = 2;
+}
+
+message ApprovalResult {
+    string session_id = 1;
+    string approval_id = 2;
+    bool granted = 3;
+    string comment = 4;
+    string approver_id = 5;
+}
+
+message PingRequest {
+    string sender = 1;
+    int64 timestamp = 2;
+}
+
+message PingResponse {
+    string responder = 1;
+    int64 timestamp = 2;
+    string status = 3;
+}
+
+message Empty {}
