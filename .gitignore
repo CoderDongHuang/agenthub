@@ -1,0 +1,30 @@
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Java
+java-console/target/
+java-console/.mvn/
+
+# Python
+python-engine/__pycache__/
+python-engine/**/__pycache__/
+python-engine/.venv/
+python-engine/venv/
+python-engine/*.pyc
+
+# Node
+web-ui/node_modules/
+web-ui/dist/
+
+# Docker
+pgdata/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
