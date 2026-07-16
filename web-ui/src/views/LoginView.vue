@@ -1,23 +1,31 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
+import { ElMessage } from 'element-plus'
 
 const router = useRouter()
+const authStore = useAuthStore()
 
 const form = ref({
-  username: '',
-  password: '',
+  username: 'admin',
+  password: 'admin123',
 })
 
 const loading = ref(false)
 
 const handleLogin = async () => {
   loading.value = true
-  // Phase 1 实现: 调用登录 API
-  setTimeout(() => {
-    loading.value = false
+  try {
+    await authStore.login(form.value.username, form.value.password)
+    ElMessage.success('登录成功')
     router.push('/dashboard')
-  }, 500)
+  } catch (e: any) {
+    const msg = e?.response?.data?.message || e?.message || '登录失败'
+    ElMessage.error(msg)
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 
