@@ -34,10 +34,13 @@ spring:
       secret: CHANGE_ME_IN_PRODUCTION_USE_256_BIT_KEY
       expiration-ms: 86400000  # 24 小时
 
-# gRPC Server 配置
+# gRPC 配置
 grpc:
   server:
     port: 9090
+  python:
+    host: localhost
+    port: 9091
 
 # Actuator
 management:
