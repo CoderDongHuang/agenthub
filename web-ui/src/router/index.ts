@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -7,7 +8,7 @@ const router = createRouter({
       path: '/login',
       name: 'Login',
       component: () => import('../views/LoginView.vue'),
-      meta: { title: '登录' },
+      meta: { title: '登录', public: true },
     },
     {
       path: '/',
@@ -53,6 +54,18 @@ const router = createRouter({
       ],
     },
   ],
+})
+
+// 路由守卫：未登录跳转登录页
+router.beforeEach((to, _from, next) => {
+  const authStore = useAuthStore()
+  if (to.meta.public) {
+    next()
+  } else if (!authStore.isLoggedIn) {
+    next('/login')
+  } else {
+    next()
+  }
 })
 
 export default router
