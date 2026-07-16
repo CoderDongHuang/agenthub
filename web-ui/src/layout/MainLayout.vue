@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
 const route = useRoute()
+const authStore = useAuthStore()
 
 const isCollapse = ref(false)
 
@@ -19,6 +21,13 @@ const menuItems = [
 const currentTitle = computed(() => {
   return route.meta?.title || 'AI Agent Hub'
 })
+
+const displayName = computed(() => authStore.user?.displayName || '用户')
+
+const handleLogout = () => {
+  authStore.logout()
+  router.push('/login')
+}
 </script>
 
 <template>
@@ -57,7 +66,8 @@ const currentTitle = computed(() => {
         </el-button>
         <h2>{{ currentTitle }}</h2>
         <div class="header-right">
-          <span>管理员</span>
+          <span>{{ displayName }}</span>
+          <el-button type="danger" link size="small" @click="handleLogout">退出</el-button>
         </div>
       </el-header>
       <el-main class="layout-main">
