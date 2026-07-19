@@ -82,25 +82,44 @@
 
 ---
 
-## 🚀 快速开始（开发阶段）
+## 🚀 快速开始
 
 ```bash
-# 1. 启动基础设施
-docker-compose up -d  # PostgreSQL + Redis
+# 0. 配置 API Key
+cp .env.example .env
+# 编辑 .env，至少填入 DEEPSEEK_API_KEY
+
+# 1. 启动数据库
+docker-compose up -d
 
 # 2. 启动 Python Agent 运行时
 cd python-engine
 pip install -r requirements.txt
-python -m uvicorn main:app --port 8000
+python main.py    # :8000 + gRPC :9091
 
 # 3. 启动 Java 控制台
 cd java-console
-./mvnw spring-boot:run
+./mvnw spring-boot:run   # :8080 + gRPC :9090
 
 # 4. 启动前端
 cd web-ui
-npm install && npm run dev
+npm install && npm run dev   # :5173
 ```
+
+浏览器打开 `http://localhost:5173`，默认账号 `admin` / `admin123`。
+
+## ✨ 功能特性
+
+| 模块 | 功能 |
+|------|------|
+| **Agent 管理** | 表单创建 Agent，选模型、写提示词、发布上线 |
+| **多模型** | DeepSeek / GPT-4o / Claude / 通义千问，设 Key 即用 |
+| **流式对话** | SSE 实时推送，支持工具调用（计算器、搜索等） |
+| **审批卡点** | 工具分低/中/高风险，中高风险自动触发审批 |
+| **审计日志** | 全量操作记录，按时间/用户/类型筛选 |
+| **工具生态** | 开发者写 Python 丢 custom/ 目录，自动注册 + 同步到市场 |
+| **知识库 RAG** | 上传文档 → 分块索引 → 对话时自动检索注入 |
+| **多渠道** | Web 控制台 / REST API (API Key) / 网页嵌入脚本 |
 
 ---
 
