@@ -7,6 +7,7 @@ interface UserInfo {
   username: string
   displayName: string
   roles: string[]
+  email?: string
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -30,11 +31,23 @@ export const useAuthStore = defineStore('auth', () => {
     return data
   }
 
+  async function restoreSession() {
+    if (!token.value || user.value) return user.value
+    try {
+      const response = await api.get('/auth/me') as any
+      user.value = response.data
+      return user.value
+    } catch {
+      logout()
+      return null
+    }
+  }
+
   function logout() {
     token.value = ''
     user.value = null
     localStorage.removeItem('token')
   }
 
-  return { token, user, isLoggedIn, isAdmin, login, logout }
+  return { token, user, isLoggedIn, isAdmin, login, restoreSession, logout }
 })

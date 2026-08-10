@@ -1,0 +1,84 @@
+/* Shared refinement layer for the existing CRUD views. */
+.console-page :is(.agent-toolbar, .tool-toolbar, .audit-toolbar) { border-radius: 8px 8px 0 0 !important; background: #f5f7f4 !important; }
+.console-page :is(.agent-count, .tool-toolbar > span, .knowledge-summary span, .library-heading span, .approval-stat > span, .approval-rule > span, .audit-summary > div > span, .risk-intro span, .entry-head > span, .detail-head span, .detail-section > span, .panel-head span) { color: var(--console-primary) !important; font-family: inherit !important; font-size: 9px !important; font-weight: 700 !important; }
+
+.operations-page .status-banner { border: 1px solid #cbd9cf !important; border-radius: 8px !important; background: var(--console-primary-soft) !important; color: var(--console-ink) !important; overflow: hidden; }
+.operations-page .status-summary > span { color: var(--console-primary) !important; font-family: inherit !important; font-size: 9px !important; font-weight: 700; }
+.operations-page .status-summary p { color: var(--console-muted) !important; }
+.operations-page .status-actions { border-color: #cfdbd2 !important; }
+.operations-page .status-actions button { border-color: #cfdbd2 !important; background: rgba(255,255,255,.68) !important; color: var(--console-ink) !important; }
+.operations-page .status-actions button:hover { background: white !important; }
+.operations-page .status-actions span { color: var(--console-primary) !important; font-family: inherit !important; font-size: 8px !important; }
+.operations-page .status-actions .el-icon { color: var(--console-primary) !important; }
+.operations-page .metric-grid { margin-top: 14px; border: 0 !important; gap: 12px; }
+.operations-page .metric-grid article { min-height: 132px !important; border: 1px solid var(--console-line) !important; border-radius: 8px !important; }
+.operations-page .chart-column i { border-radius: 4px 4px 0 0; background: var(--console-primary) !important; }
+.operations-page .chart-column > div { border-radius: 4px 4px 0 0; background: #edf2ed !important; }
+.operations-page .runtime-metrics div, .operations-page .service-node { background: var(--console-panel-soft) !important; }
+
+.agent-page .agent-table-shell, .users-page .user-table-shell { border-radius: 0 0 8px 8px !important; }
+.agent-page .agent-toolbar .console-search, .audit-page .audit-toolbar .console-search { background: white !important; }
+.agent-detail-page .agent-monogram { border-radius: 8px !important; background: var(--console-blue-soft) !important; color: var(--console-blue) !important; }
+.agent-detail-page .agent-title > span, .agent-detail-page .dossier-head span, .agent-detail-page .rail-head span { color: var(--console-primary) !important; font-family: inherit !important; font-size: 9px !important; font-weight: 700 !important; }
+.agent-detail-page .agent-main-action { background: #f5f7f4 !important; }
+.agent-detail-page .agent-main-action button { border-radius: 8px !important; background: var(--console-primary-dark) !important; }
+.agent-detail-page .prompt-dossier, .agent-detail-page .configuration-rail, .agent-detail-page .lifecycle-track { border-radius: 8px !important; overflow: hidden; }
+.agent-detail-page .prompt-dossier pre { border-top: 1px solid var(--console-line) !important; border-bottom: 1px solid var(--console-line) !important; background: #f6f8f5 !important; color: #405048 !important; }
+.agent-detail-page .prompt-comment { color: #8b958f !important; }
+.agent-detail-page .configuration-rail { background: var(--console-blue-soft) !important; }
+
+.chat-lab .conversation-stream { background: #f4f6f3 !important; }
+.chat-lab .system-event { border-radius: 7px !important; background: #eaf0eb !important; }
+.chat-lab .message-body { border-radius: 8px !important; }
+.chat-lab .message-row.user .message-body { border-color: #c8d6de !important; background: var(--console-blue-soft) !important; color: #324b5b !important; }
+.chat-lab .composer { background: white !important; }
+.chat-lab .composer button { border-radius: 7px !important; background: var(--console-primary-dark) !important; }
+.chat-lab .trace-panel { border-left-color: var(--console-line) !important; background: #eef3f0 !important; color: var(--console-ink) !important; }
+.chat-lab .trace-head span { color: var(--console-primary) !important; font-family: inherit !important; }
+.chat-lab .trace-stats { border-color: var(--console-line) !important; }
+.chat-lab .trace-stats div, .chat-lab .trace-list > div, .chat-lab .trace-list > article { border-color: var(--console-line) !important; }
+.chat-lab .trace-list strong { color: var(--console-ink-soft) !important; }
+.chat-lab .trace-source { border-color: var(--console-line) !important; border-radius: 7px !important; background: white !important; }
+.chat-lab .trace-source > span { border-color: var(--console-line) !important; color: var(--console-muted) !important; }
+.chat-lab .trace-source pre { color: #56655d !important; }
+
+.knowledge-page .knowledge-summary { gap: 12px; border: 0 !important; background: transparent !important; }
+.knowledge-page .knowledge-summary > div { border: 1px solid var(--console-line) !important; border-radius: 8px !important; background: white !important; }
+.knowledge-page .asset-icon { border-radius: 7px !important; background: var(--console-primary-soft) !important; color: var(--console-primary-dark) !important; }
+.knowledge-page .index-inspector { border-radius: 8px !important; background: var(--console-blue-soft) !important; color: var(--console-ink) !important; }
+.knowledge-page .index-inspector li, .knowledge-page .source-fragment, .knowledge-page .source-fragment > span { border-color: #d3e0e6 !important; }
+.knowledge-page .source-fragment { border-radius: 7px !important; background: rgba(255,255,255,.72) !important; }
+.knowledge-page .source-fragment pre { color: #526b7a !important; }
+.knowledge-page .upload-drop { border-radius: 7px !important; background: #f7f9f6 !important; }
+
+.tool-page .tool-risk-board { gap: 10px; border: 0 !important; background: transparent !important; }
+.tool-page .tool-risk-board > button { border: 1px solid var(--console-line) !important; border-radius: 8px !important; background: white !important; }
+.tool-page .tool-risk-board > button:hover, .tool-page .tool-risk-board > button.active { border-color: #b8cabd !important; background: var(--console-primary-soft) !important; color: var(--console-primary-dark) !important; }
+.tool-page .category-tabs button.active { border-radius: 5px !important; background: white !important; color: var(--console-primary-dark) !important; box-shadow: 0 2px 7px rgba(48,66,56,.08); }
+.tool-page .tool-item { border-radius: 8px !important; }
+.tool-page .tool-code-mark { border-radius: 7px !important; background: var(--console-blue-soft) !important; color: var(--console-blue) !important; }
+.tool-page .tool-schema { border-radius: 7px !important; background: #f5f7f4 !important; }
+
+.approval-page .approval-stats { gap: 12px; border: 0 !important; background: transparent !important; }
+.approval-page .approval-stats > div { border: 1px solid var(--console-line) !important; border-radius: 8px !important; background: white !important; }
+.approval-page .approval-queue { background: #f5f7f4 !important; }
+.approval-page .queue-tabs button.active { border-radius: 5px !important; background: white !important; color: var(--console-primary-dark) !important; box-shadow: 0 2px 7px rgba(48,66,56,.08); }
+.approval-page .detail-section pre { border-radius: 7px !important; background: #f6f8f5 !important; color: #4c5c54 !important; }
+.approval-page .decision-notice { border-radius: 7px !important; background: #f6eddf !important; color: #806230 !important; }
+.approval-page .decision-actions button { border-radius: 7px !important; }
+.approval-page .decision-actions button.approve { border-color: var(--console-primary-dark) !important; background: var(--console-primary-dark) !important; }
+
+.audit-page .audit-summary { gap: 12px; border: 0 !important; background: transparent !important; }
+.audit-page .audit-summary > div { border: 1px solid var(--console-line) !important; border-radius: 8px !important; background: white !important; }
+.audit-page .audit-ledger article { padding: 24px !important; }
+.audit-page .entry-head > span, .audit-page .entry-meta { font-family: inherit !important; }
+
+.users-page .identity-summary { gap: 12px; border: 0 !important; background: transparent !important; }
+.users-page .identity-summary > div { border: 1px solid var(--console-line) !important; border-radius: 8px !important; background: white !important; }
+.users-page .identity-summary .identity-intro { background: var(--console-blue-soft) !important; color: var(--console-ink) !important; }
+.users-page .identity-intro span { color: var(--console-blue) !important; }
+.users-page .identity-intro small { color: var(--console-muted) !important; }
+
+@media (max-width: 760px) {
+  .operations-page .metric-grid, .knowledge-page .knowledge-summary, .tool-page .tool-risk-board, .approval-page .approval-stats, .audit-page .audit-summary, .users-page .identity-summary { gap: 8px; }
+}
