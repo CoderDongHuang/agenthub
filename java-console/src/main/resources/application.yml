@@ -24,6 +24,11 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 26MB
+
   data:
     redis:
       host: localhost
@@ -41,6 +46,13 @@ grpc:
   python:
     host: localhost
     port: 9091
+
+python:
+  runtime:
+    base-url: http://localhost:8000
+
+agenthub:
+  internal-token: ${AGENTHUB_INTERNAL_TOKEN:agenthub-local-runtime}
 
 # Actuator
 management:

@@ -1,5 +1,6 @@
 package com.agenthub.security;
 
+import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -11,6 +12,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.http.HttpMethod;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -34,9 +36,16 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
+                .dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
                 // 公开接口
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()  // CORS 预检
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/health").permitAll()
+                .requestMatchers("/api/approvals/create").permitAll()  // Python 内部调用
+                .requestMatchers("/api/tools/register").permitAll()   // Python 内部调用
+                .requestMatchers("/api/v1/**").permitAll()           // API Key 认证
+                .requestMatchers("/api/knowledge/docs/**").permitAll() // Python 内部调用
+                .requestMatchers("/api/internal/**").permitAll()     // 内部 Token 由控制器校验
                 .requestMatchers("/api-docs/**", "/swagger-ui/**").permitAll()
                 // 需要认证
                 .requestMatchers("/api/**").authenticated()
