@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -63,9 +64,12 @@ public class ChatController {
                             if ("text".equals(type)) {
                                 outputText.append(data);
                             }
+                            Map<String, Object> payload = new LinkedHashMap<>();
+                            payload.put("content", data != null ? data : "");
+                            payload.put("toolName", response.getToolName());
                             SseEmitter.SseEventBuilder event = SseEmitter.event()
                                     .name(type)
-                                    .data(data != null ? data : "", MediaType.TEXT_PLAIN);
+                                    .data(payload, MediaType.APPLICATION_JSON);
                             if (!response.getToolName().isEmpty()) {
                                 event = event.id(response.getToolName());
                             }
@@ -79,7 +83,7 @@ public class ChatController {
                         try {
                             emitter.send(SseEmitter.event()
                                     .name("error")
-                                    .data("Agent 执行异常: " + error.getMessage()));
+                                    .data(Map.of("content", "Agent 执行异常: " + error.getMessage()), MediaType.APPLICATION_JSON));
                             emitter.complete();
                         } catch (Exception e) {
                             emitter.completeWithError(e);
@@ -101,7 +105,8 @@ public class ChatController {
                             );
                         } catch (Exception ignored) {}
                         try {
-                            emitter.send(SseEmitter.event().name("done").data(""));
+                            emitter.send(SseEmitter.event().name("done")
+                                    .data(Map.of("content", ""), MediaType.APPLICATION_JSON));
                             emitter.complete();
                         } catch (Exception e) {
                             emitter.completeWithError(e);

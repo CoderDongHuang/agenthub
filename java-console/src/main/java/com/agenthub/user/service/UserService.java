@@ -67,6 +67,11 @@ public class UserService {
                 .orElseThrow(() -> new IllegalArgumentException("用户不存在: " + id));
     }
 
+    public User getUserByUsername(String username) {
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new IllegalArgumentException("用户不存在: " + username));
+    }
+
     public User updateUser(Long id, CreateUserRequest request) {
         User user = getUser(id);
 
