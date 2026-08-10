@@ -19,7 +19,13 @@ log = logging.getLogger(__name__)
 
 MAX_ITERATIONS = 10  # 最大 ReAct 循环次数
 JAVA_CONSOLE_URL = os.getenv("JAVA_CONSOLE_URL", "http://localhost:8080").rstrip("/")
-INTERNAL_API_TOKEN = os.getenv("AGENTHUB_INTERNAL_TOKEN", "agenthub-local-runtime")
+INTERNAL_API_TOKEN = os.getenv("AGENTHUB_INTERNAL_TOKEN", "")
+
+
+def internal_headers(tenant_id: str) -> dict[str, str]:
+    if len(INTERNAL_API_TOKEN) < 32:
+        raise RuntimeError("AGENTHUB_INTERNAL_TOKEN must contain at least 32 characters")
+    return {"X-Internal-Token": INTERNAL_API_TOKEN, "X-Tenant-Id": tenant_id}
 RESPONSE_QUALITY_PROMPT = """
 
 除非上面的业务指令明确要求其他格式，请遵循以下回答质量要求：
@@ -66,7 +72,7 @@ class AgentEngine:
             history = session.get("messages", [])
 
             # 2. 加载 Agent 配置（Phase 1: 使用硬编码配置，后续从 Java 获取）
-            agent_config = await self._load_agent_config(request.agent_id)
+            agent_config = await self._load_agent_config(request.agent_id, request.tenant_id)
 
             # 3. 获取 LLM 并绑定工具
             tool_schemas = self.tool_executor.get_json_schemas()
@@ -117,7 +123,7 @@ class AgentEngine:
             # 尝试从知识库检索相关上下文
             try:
                 retriever = get_retriever()
-                rag_context = retriever.get_context(user_message, top_k=3)
+                rag_context = retriever.get_context(user_message, top_k=3, tenant_id=request.tenant_id)
                 if rag_context:
                     system_prompt += f"\n\n[Relevant Knowledge]\n{rag_context}\n\nUse the above knowledge to answer the user's question accurately."
                     log.info(f"RAG context injected ({len(rag_context)} chars)")
@@ -175,7 +181,7 @@ class AgentEngine:
                             try:
                                 approval_id = await self._create_approval(
                                     request.session_id, request.agent_id,
-                                    tool_name, request.user_id, str(tool_args), risk_level
+                                    tool_name, request.user_id, str(tool_args), risk_level, request.tenant_id
                                 )
                                 yield self._make_response(
                                     agent_hub_pb2.ExecutionResponse.APPROVAL_WAIT,
@@ -183,7 +189,9 @@ class AgentEngine:
                                     tool_name=tool_name,
                                 )
                                 # 轮询等待审批结果
-                                approved = await self._wait_approval(approval_id, timeout=120)
+                                approved = await self._wait_approval(
+                                    approval_id, request.tenant_id, timeout=120
+                                )
                                 if not approved:
                                     yield self._make_response(
                                         agent_hub_pb2.ExecutionResponse.ERROR,
@@ -242,7 +250,7 @@ class AgentEngine:
             log.error(f"Agent 执行异常: {e}", exc_info=True)
             yield self._make_response(agent_hub_pb2.ExecutionResponse.ERROR, content=str(e))
 
-    async def _load_agent_config(self, agent_id: str) -> Dict[str, Any]:
+    async def _load_agent_config(self, agent_id: str, tenant_id: str) -> Dict[str, Any]:
         """
         从 Java Console 加载 Agent 配置（通过 HTTP REST API）
         """
@@ -259,7 +267,7 @@ class AgentEngine:
             async with httpx.AsyncClient(timeout=5) as client:
                 resp = await client.get(
                     f"{JAVA_CONSOLE_URL}/api/internal/agents/{agent_id}",
-                    headers={"X-Internal-Token": INTERNAL_API_TOKEN},
+                    headers=internal_headers(tenant_id),
                 )
                 if resp.status_code == 200:
                     data = resp.json().get("data", {})
@@ -277,7 +285,7 @@ class AgentEngine:
         return default_config
 
     async def _create_approval(self, session_id: str, agent_id: str, tool_name: str,
-                                user_id: str, context: str, risk_level: str) -> str:
+                                user_id: str, context: str, risk_level: str, tenant_id: str) -> str:
         """通过 Java REST API 创建审批请求，返回审批 ID"""
         import httpx
         async with httpx.AsyncClient(timeout=10) as client:
@@ -290,14 +298,15 @@ class AgentEngine:
                     "requesterId": int(user_id) if user_id.isdigit() else 1,
                     "reason": f"Agent {agent_id} requests to use tool [{tool_name}] (risk: {risk_level})",
                     "context": context,
-                }
+                },
+                headers=internal_headers(tenant_id),
             )
             if resp.status_code == 200:
                 data = resp.json().get("data", {})
                 return str(data.get("id", ""))
             raise Exception(f"Failed to create approval: {resp.status_code}")
 
-    async def _wait_approval(self, approval_id: str, timeout: int = 120) -> bool:
+    async def _wait_approval(self, approval_id: str, tenant_id: str, timeout: int = 120) -> bool:
         """轮询 Java API 等待审批结果，超时返回 False"""
         import asyncio
         import httpx
@@ -306,7 +315,10 @@ class AgentEngine:
             while asyncio.get_event_loop().time() < deadline:
                 await asyncio.sleep(3)  # 每 3 秒检查一次
                 try:
-                    resp = await client.get(f"{JAVA_CONSOLE_URL}/api/approvals/{approval_id}")
+                    resp = await client.get(
+                        f"{JAVA_CONSOLE_URL}/api/approvals/{approval_id}",
+                        headers=internal_headers(tenant_id),
+                    )
                     if resp.status_code == 200:
                         status = resp.json().get("data", {}).get("status", "pending")
                         if status == "approved":

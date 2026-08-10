@@ -11,6 +11,9 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
+import com.agenthub.common.config.TenantContext;
+import com.agenthub.user.entity.User;
+import com.agenthub.user.repository.UserRepository;
 
 import java.io.IOException;
 import java.util.List;
@@ -20,9 +23,11 @@ import java.util.stream.Collectors;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final UserRepository userRepository;
 
-    public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider) {
+    public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider, UserRepository userRepository) {
         this.jwtTokenProvider = jwtTokenProvider;
+        this.userRepository = userRepository;
     }
 
     @Override
@@ -32,7 +37,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String token = extractToken(request);
 
         if (StringUtils.hasText(token) && jwtTokenProvider.validateToken(token)) {
-            String username = jwtTokenProvider.getUsername(token);
+            Long userId = jwtTokenProvider.getUserId(token);
+            User user = userRepository.findById(userId)
+                    .filter(candidate -> "active".equals(candidate.getStatus()))
+                    .orElse(null);
+            if (user == null) {
+                filterChain.doFilter(request, response);
+                return;
+            }
+            String username = user.getUsername();
             List<String> roles = jwtTokenProvider.getRoles(token);
 
             List<SimpleGrantedAuthority> authorities = roles.stream()
@@ -40,13 +53,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     .collect(Collectors.toList());
 
             UsernamePasswordAuthenticationToken authentication =
-                    new UsernamePasswordAuthenticationToken(username, null, authorities);
+                    new UsernamePasswordAuthenticationToken(
+                            new AuthenticatedUser(user.getId(), user.getTenantId(), username), null, authorities);
             authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
             SecurityContextHolder.getContext().setAuthentication(authentication);
+            TenantContext.set(user.getTenantId());
         }
-
-        filterChain.doFilter(request, response);
+        try {
+            filterChain.doFilter(request, response);
+        } finally {
+            TenantContext.clear();
+        }
     }
 
     private String extractToken(HttpServletRequest request) {

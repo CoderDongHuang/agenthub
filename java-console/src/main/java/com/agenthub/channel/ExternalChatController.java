@@ -62,6 +62,7 @@ public class ExternalChatController {
                 .setSessionId(sessionId)
                 .setAgentId(agentId)
                 .setUserId(keyInfo.get("user_id").toString())
+                .setTenantId(keyInfo.get("tenant_id").toString())
                 .setMessage(message)
                 .setChannel("api")
                 .build();
@@ -78,7 +79,8 @@ public class ExternalChatController {
         );
 
         auditService.record("api_chat", Long.valueOf(keyInfo.get("user_id").toString()),
-                "api_user", "API chat: agent=" + agentId, message, "success");
+                "api_user", "API chat: agent=" + agentId, message, "success",
+                Long.valueOf(keyInfo.get("tenant_id").toString()));
 
         return ApiResponse.ok(Map.of(
                 "sessionId", sessionId,
@@ -112,6 +114,7 @@ public class ExternalChatController {
                 .setSessionId(sessionId)
                 .setAgentId(agentId)
                 .setUserId(keyInfo.get("user_id").toString())
+                .setTenantId(keyInfo.get("tenant_id").toString())
                 .setMessage(message)
                 .setChannel("api")
                 .build();

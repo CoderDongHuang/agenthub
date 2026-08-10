@@ -14,6 +14,7 @@ import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.agenthub.security.CurrentUser;
 
 @Service
 public class PlatformOverviewService {
@@ -24,6 +25,8 @@ public class PlatformOverviewService {
     private final UserRepository userRepository;
     private final JdbcTemplate jdbcTemplate;
     private final RestClient runtimeClient;
+    private final CurrentUser currentUser;
+    private final String internalToken;
 
     public PlatformOverviewService(
             AgentDefinitionRepository agentRepository,
@@ -31,12 +34,16 @@ public class PlatformOverviewService {
             AuditLogRepository auditLogRepository,
             UserRepository userRepository,
             JdbcTemplate jdbcTemplate,
-            @Value("${python.runtime.base-url:http://localhost:8000}") String runtimeBaseUrl) {
+            CurrentUser currentUser,
+            @Value("${python.runtime.base-url:http://localhost:8000}") String runtimeBaseUrl,
+            @Value("${agenthub.internal-token}") String internalToken) {
         this.agentRepository = agentRepository;
         this.approvalRepository = approvalRepository;
         this.auditLogRepository = auditLogRepository;
         this.userRepository = userRepository;
         this.jdbcTemplate = jdbcTemplate;
+        this.currentUser = currentUser;
+        this.internalToken = internalToken;
         this.runtimeClient = RestClient.builder().baseUrl(runtimeBaseUrl).build();
     }
 
@@ -47,27 +54,28 @@ public class PlatformOverviewService {
         overview.put("usage", usageMetrics());
         overview.put("runtime", runtimeSnapshot());
         overview.put("recentActivity", auditLogRepository
-                .findAllByOrderByCreatedAtDesc(Pageable.ofSize(8))
+                .findByTenantIdOrderByCreatedAtDesc(currentUser.tenantId(), Pageable.ofSize(8))
                 .getContent());
         return overview;
     }
 
     private Map<String, Object> agentMetrics() {
         Map<String, Object> metrics = new LinkedHashMap<>();
-        metrics.put("total", agentRepository.countByTenantId(0L));
-        metrics.put("published", agentRepository.countByStatus("published"));
-        metrics.put("draft", agentRepository.countByStatus("draft"));
-        metrics.put("disabled", agentRepository.countByStatus("disabled"));
+        metrics.put("total", agentRepository.countByTenantId(currentUser.tenantId()));
+        metrics.put("published", agentRepository.countByTenantIdAndStatus(currentUser.tenantId(), "published"));
+        metrics.put("draft", agentRepository.countByTenantIdAndStatus(currentUser.tenantId(), "draft"));
+        metrics.put("disabled", agentRepository.countByTenantIdAndStatus(currentUser.tenantId(), "disabled"));
         return metrics;
     }
 
     private Map<String, Object> governanceMetrics() {
         Map<String, Object> metrics = new LinkedHashMap<>();
-        metrics.put("pendingApprovals", approvalRepository.countByStatus("pending"));
-        metrics.put("auditEvents", auditLogRepository.count());
-        metrics.put("users", userRepository.count());
-        metrics.put("tools", queryLong("SELECT COUNT(*) FROM tool_definition"));
-        metrics.put("highRiskTools", queryLong("SELECT COUNT(*) FROM tool_definition WHERE risk_level = 'high'"));
+        metrics.put("pendingApprovals", approvalRepository.countByTenantIdAndStatus(currentUser.tenantId(), "pending"));
+        metrics.put("auditEvents", queryLong("SELECT COUNT(*) FROM audit_log WHERE tenant_id = ?"));
+        metrics.put("users", userRepository.countByTenantId(currentUser.tenantId()));
+        metrics.put("tools", queryLong("SELECT COUNT(*) FROM tool_definition WHERE tenant_id = ?"));
+        metrics.put("highRiskTools", queryLong(
+                "SELECT COUNT(*) FROM tool_definition WHERE tenant_id = ? AND risk_level = 'high'"));
         return metrics;
     }
 
@@ -77,7 +85,8 @@ public class PlatformOverviewService {
                 "SELECT COALESCE(SUM(input_tokens), 0) AS input_tokens, " +
                 "COALESCE(SUM(output_tokens), 0) AS output_tokens, " +
                 "COALESCE(SUM(cost), 0) AS cost " +
-                "FROM token_usage WHERE created_at >= date_trunc('month', NOW())"
+                "FROM token_usage WHERE tenant_id = ? AND created_at >= date_trunc('month', NOW())",
+                currentUser.tenantId()
         );
         metrics.put("monthlyInputTokens", monthly.get("input_tokens"));
         metrics.put("monthlyOutputTokens", monthly.get("output_tokens"));
@@ -85,8 +94,8 @@ public class PlatformOverviewService {
         metrics.put("last7Days", jdbcTemplate.queryForList(
                 "SELECT TO_CHAR(created_at::date, 'MM-DD') AS day, " +
                 "SUM(input_tokens + output_tokens) AS tokens, SUM(cost) AS cost " +
-                "FROM token_usage WHERE created_at >= NOW() - INTERVAL '7 days' " +
-                "GROUP BY created_at::date ORDER BY created_at::date"
+                "FROM token_usage WHERE tenant_id = ? AND created_at >= NOW() - INTERVAL '7 days' " +
+                "GROUP BY created_at::date ORDER BY created_at::date", currentUser.tenantId()
         ));
         return metrics;
     }
@@ -96,6 +105,8 @@ public class PlatformOverviewService {
         try {
             Map<String, Object> snapshot = runtimeClient.get()
                     .uri("/runtime/capabilities")
+                    .header("X-Internal-Token", internalToken)
+                    .header("X-Tenant-Id", String.valueOf(currentUser.tenantId()))
                     .retrieve()
                     .body(Map.class);
             return snapshot == null ? Map.of("status", "UNKNOWN") : snapshot;
@@ -109,7 +120,7 @@ public class PlatformOverviewService {
     }
 
     private long queryLong(String sql) {
-        Long value = jdbcTemplate.queryForObject(sql, Long.class);
+        Long value = jdbcTemplate.queryForObject(sql, Long.class, currentUser.tenantId());
         return value == null ? 0L : value;
     }
 }

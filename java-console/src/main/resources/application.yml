@@ -52,7 +52,9 @@ python:
     base-url: http://localhost:8000
 
 agenthub:
-  internal-token: ${AGENTHUB_INTERNAL_TOKEN:agenthub-local-runtime}
+  internal-token: ${AGENTHUB_INTERNAL_TOKEN}
+  cors:
+    allowed-origins: ${AGENTHUB_CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
 
 # Actuator
 management:

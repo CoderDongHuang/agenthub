@@ -5,6 +5,7 @@ FastAPI 服务 + gRPC Server 入口
 import logging
 import os
 import time
+import secrets
 from collections import Counter
 from pathlib import Path
 
@@ -18,6 +19,8 @@ if _dotenv_path.exists():
         pass
 
 from fastapi import FastAPI
+from fastapi import Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from agent_runtime.core.engine import get_retriever
@@ -33,6 +36,13 @@ log = logging.getLogger(__name__)
 STARTED_AT = time.monotonic()
 _rag_bootstrapped = False
 JAVA_CONSOLE_URL = os.getenv("JAVA_CONSOLE_URL", "http://localhost:8080").rstrip("/")
+INTERNAL_API_TOKEN = os.getenv("AGENTHUB_INTERNAL_TOKEN", "")
+
+
+def internal_headers(tenant_id: str = "0") -> dict[str, str]:
+    if len(INTERNAL_API_TOKEN) < 32:
+        raise RuntimeError("AGENTHUB_INTERNAL_TOKEN must contain at least 32 characters")
+    return {"X-Internal-Token": INTERNAL_API_TOKEN, "X-Tenant-Id": tenant_id}
 
 grpc_server = GrpcServer(get_engine(), get_tool_executor())
 
@@ -45,15 +55,17 @@ async def bootstrap_rag_index():
     try:
         import httpx
         async with httpx.AsyncClient(timeout=15) as client:
-            response = await client.get(f"{JAVA_CONSOLE_URL}/api/knowledge/docs/chunks")
+            response = await client.get(
+                f"{JAVA_CONSOLE_URL}/api/knowledge/docs/chunks", headers=internal_headers()
+            )
             response.raise_for_status()
             rows = response.json().get("data", [])
         grouped = {}
         for row in rows:
-            grouped.setdefault(str(row["doc_id"]), []).append(row["content"])
+            grouped.setdefault((str(row["tenant_id"]), str(row["doc_id"])), []).append(row["content"])
         retriever = get_retriever()
-        for doc_id, chunks in grouped.items():
-            retriever.index(doc_id, chunks)
+        for (tenant_id, doc_id), chunks in grouped.items():
+            retriever.index(doc_id, chunks, tenant_id)
         _rag_bootstrapped = True
         log.info("Restored %s knowledge documents from PostgreSQL", len(grouped))
         return True
@@ -113,6 +125,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def protect_runtime_management(request: Request, call_next):
+    if request.url.path.startswith("/rag/") or request.url.path.startswith("/runtime/"):
+        provided = request.headers.get("X-Internal-Token", "")
+        if len(INTERNAL_API_TOKEN) < 32 or not secrets.compare_digest(provided, INTERNAL_API_TOKEN):
+            return JSONResponse(status_code=401, content={"status": "error", "message": "Unauthorized"})
+    return await call_next(request)
+
 app.add_event_handler("startup", startup_event)
 app.add_event_handler("shutdown", shutdown_event)
 
@@ -135,7 +156,7 @@ async def health():
 
 
 @app.post("/rag/index")
-async def rag_index(doc_id: int = None):
+async def rag_index(doc_id: int = None, tenant_id: str = "0"):
     """从 Java DB 获取文档内容，分块并索引到向量存储"""
     if doc_id is None:
         return {"status": "error", "message": "doc_id is required"}
@@ -143,7 +164,9 @@ async def rag_index(doc_id: int = None):
     try:
         import httpx
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(f"{JAVA_CONSOLE_URL}/api/knowledge/docs/{doc_id}")
+            resp = await client.get(
+                f"{JAVA_CONSOLE_URL}/api/knowledge/docs/{doc_id}", headers=internal_headers(tenant_id)
+            )
             if resp.status_code != 200:
                 return {"status": "error", "message": f"Failed to fetch doc: {resp.status_code}"}
             doc = resp.json().get("data", {})
@@ -159,12 +182,13 @@ async def rag_index(doc_id: int = None):
 
         # 索引
         retriever = get_retriever()
-        retriever.index(str(doc_id), chunks)
+        retriever.index(str(doc_id), chunks, tenant_id)
 
         async with httpx.AsyncClient(timeout=30) as client:
             persist_response = await client.post(
                 f"{JAVA_CONSOLE_URL}/api/knowledge/docs/{doc_id}/chunks",
                 json={"chunks": chunks},
+                headers=internal_headers(tenant_id),
             )
             persist_response.raise_for_status()
 
@@ -173,35 +197,35 @@ async def rag_index(doc_id: int = None):
             "doc_id": doc_id,
             "filename": filename,
             "chunks": len(chunks),
-            "total_indexed": retriever.stats()["total_chunks"],
+            "total_indexed": retriever.stats(tenant_id)["total_chunks"],
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 
 @app.get("/rag/stats")
-async def rag_stats():
+async def rag_stats(tenant_id: str = "0"):
     """获取检索器统计"""
     await bootstrap_rag_index()
     retriever = get_retriever()
-    return {"status": "ok", "stats": retriever.stats()}
+    return {"status": "ok", "stats": retriever.stats(tenant_id)}
 
 
 @app.delete("/rag/docs/{doc_id}")
-async def rag_delete(doc_id: int):
+async def rag_delete(doc_id: int, tenant_id: str = "0"):
     """移除指定文档的运行时索引。"""
-    get_retriever().remove(str(doc_id))
+    get_retriever().remove(str(doc_id), tenant_id)
     return {"status": "ok", "doc_id": doc_id}
 
 
 @app.get("/runtime/capabilities")
-async def runtime_capabilities():
+async def runtime_capabilities(request: Request):
     """提供给 Java 管理面的运行时能力快照。"""
     await bootstrap_rag_index()
     tool_executor = get_tool_executor()
     tools = tool_executor.list_tools()
     risk_distribution = Counter(tool.risk_level for tool in tools)
-    retriever_stats = get_retriever().stats()
+    retriever_stats = get_retriever().stats(request.headers.get("X-Tenant-Id", "0"))
     model_status = get_provider_status()
 
     return {

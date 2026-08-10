@@ -5,21 +5,25 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
+import com.agenthub.security.CurrentUser;
 
 @RestController
 @RequestMapping("/api/api-keys")
 public class ApiKeyController {
 
     private final JdbcTemplate jdbc;
+    private final CurrentUser currentUser;
 
-    public ApiKeyController(JdbcTemplate jdbc) {
+    public ApiKeyController(JdbcTemplate jdbc, CurrentUser currentUser) {
         this.jdbc = jdbc;
+        this.currentUser = currentUser;
     }
 
     @GetMapping
     public ApiResponse<List<Map<String, Object>>> list() {
         List<Map<String, Object>> keys = jdbc.queryForList(
-                "SELECT id, key_name, api_key, agent_id, rate_limit, is_active, last_used_at, created_at FROM api_key ORDER BY created_at DESC"
+                "SELECT id, key_name, agent_id, rate_limit, is_active, last_used_at, created_at " +
+                        "FROM api_key WHERE tenant_id = ? ORDER BY created_at DESC", currentUser.tenantId()
         );
         return ApiResponse.ok(keys);
     }
@@ -31,15 +35,16 @@ public class ApiKeyController {
         Long agentId = body.containsKey("agentId") ? Long.valueOf(body.get("agentId")) : null;
 
         jdbc.update(
-                "INSERT INTO api_key (key_name, api_key, agent_id, user_id, rate_limit) VALUES (?,?,?,1,1000)",
-                keyName, apiKey, agentId
+                "INSERT INTO api_key (tenant_id, key_name, api_key, agent_id, user_id, rate_limit) " +
+                        "VALUES (?,?,?,?,?,1000)",
+                currentUser.tenantId(), keyName, apiKey, agentId, currentUser.userId()
         );
         return ApiResponse.ok(Map.of("keyName", keyName, "apiKey", apiKey));
     }
 
     @DeleteMapping("/{id}")
     public ApiResponse<String> delete(@PathVariable Long id) {
-        jdbc.update("UPDATE api_key SET is_active = false WHERE id = ?", id);
+        jdbc.update("UPDATE api_key SET is_active = false WHERE id = ? AND tenant_id = ?", id, currentUser.tenantId());
         return ApiResponse.ok("API Key disabled");
     }
 
@@ -48,7 +53,8 @@ public class ApiKeyController {
      */
     public Map<String, Object> authenticate(String apiKey) {
         List<Map<String, Object>> results = jdbc.queryForList(
-                "SELECT id, agent_id, user_id, rate_limit, is_active FROM api_key WHERE api_key = ? AND is_active = true",
+                "SELECT id, tenant_id, agent_id, user_id, rate_limit, is_active FROM api_key " +
+                        "WHERE api_key = ? AND is_active = true",
                 apiKey
         );
         if (results.isEmpty()) return null;

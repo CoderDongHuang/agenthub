@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import com.agenthub.common.config.TenantContext;
 
 @Service
 public class UserService {
@@ -30,17 +31,18 @@ public class UserService {
     }
 
     public User createUser(CreateUserRequest request) {
+        Long tenantId = currentTenant();
         if (userRepository.existsByUsername(request.getUsername())) {
             throw new IllegalArgumentException("用户名已存在: " + request.getUsername());
         }
 
         Set<Role> roles = new HashSet<>();
         if (request.getRoleIds() != null && !request.getRoleIds().isEmpty()) {
-            roles = new HashSet<>(roleRepository.findAllById(request.getRoleIds()));
+            roles = new HashSet<>(roleRepository.findByIdInAndTenantId(request.getRoleIds(), tenantId));
         }
         // 默认给 agent_user 角色
         if (roles.isEmpty()) {
-            roleRepository.findByRoleCode("agent_user").ifPresent(roles::add);
+            roleRepository.findByRoleCodeAndTenantId("agent_user", tenantId).ifPresent(roles::add);
         }
 
         User user = User.builder()
@@ -50,7 +52,7 @@ public class UserService {
                 .email(request.getEmail())
                 .phone(request.getPhone())
                 .departmentId(request.getDepartmentId())
-                .tenantId(0L)
+                .tenantId(tenantId)
                 .status("active")
                 .roles(roles)
                 .build();
@@ -59,11 +61,11 @@ public class UserService {
     }
 
     public Page<User> listUsers(Pageable pageable) {
-        return userRepository.findAll(pageable);
+        return userRepository.findByTenantId(currentTenant(), pageable);
     }
 
     public User getUser(Long id) {
-        return userRepository.findById(id)
+        return userRepository.findByIdAndTenantId(id, currentTenant())
                 .orElseThrow(() -> new IllegalArgumentException("用户不存在: " + id));
     }
 
@@ -88,7 +90,8 @@ public class UserService {
             user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         }
         if (request.getRoleIds() != null && !request.getRoleIds().isEmpty()) {
-            Set<Role> roles = new HashSet<>(roleRepository.findAllById(request.getRoleIds()));
+            Set<Role> roles = new HashSet<>(
+                    roleRepository.findByIdInAndTenantId(request.getRoleIds(), currentTenant()));
             user.setRoles(roles);
         }
 
@@ -108,6 +111,10 @@ public class UserService {
     }
 
     public List<Role> getAllRoles() {
-        return roleRepository.findAll();
+        return roleRepository.findByTenantId(currentTenant());
+    }
+
+    private Long currentTenant() {
+        return TenantContext.get() != null ? TenantContext.get() : 0L;
     }
 }

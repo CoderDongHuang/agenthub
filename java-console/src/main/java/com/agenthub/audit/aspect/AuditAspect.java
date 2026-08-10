@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
+import com.agenthub.common.config.TenantContext;
 
 /**
  * 审计切面 — 拦截 @Auditable 方法，自动记录执行结果
@@ -52,7 +53,7 @@ public class AuditAspect {
                         .detail(detail)
                         .result(result)
                         .username("system")
-                        .tenantId(0L)
+                        .tenantId(TenantContext.get() != null ? TenantContext.get() : 0L)
                         .build());
             } catch (Exception e) {
                 log.warn("Failed to write audit log: {}", e.getMessage());

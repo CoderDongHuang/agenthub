@@ -11,6 +11,7 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import com.agenthub.security.CurrentUser;
 
 @RestController
 @RequestMapping("/api/approvals")
@@ -18,20 +19,25 @@ public class ApprovalController {
 
     private final ApprovalService approvalService;
     private final AuditService auditService;
+    private final CurrentUser currentUser;
 
-    public ApprovalController(ApprovalService approvalService, AuditService auditService) {
+    public ApprovalController(ApprovalService approvalService, AuditService auditService, CurrentUser currentUser) {
         this.approvalService = approvalService;
         this.auditService = auditService;
+        this.currentUser = currentUser;
     }
 
     @PostMapping("/create")
     public ApiResponse<Map<String, Object>> create(@RequestBody Map<String, Object> body) {
+        if (body.get("requesterId") == null) {
+            return ApiResponse.error(400, "requesterId is required");
+        }
         ApprovalRequest req = approvalService.createRequest(
                 (String) body.getOrDefault("sessionId", ""),
                 body.get("agentId") != null ? Long.valueOf(body.get("agentId").toString()) : null,
                 null,
                 (String) body.getOrDefault("toolName", ""),
-                body.get("requesterId") != null ? Long.valueOf(body.get("requesterId").toString()) : 1L,
+                Long.valueOf(body.get("requesterId").toString()),
                 (String) body.getOrDefault("reason", ""),
                 (String) body.getOrDefault("context", "")
         );
@@ -47,8 +53,7 @@ public class ApprovalController {
     @GetMapping("/my")
     public ApiResponse<Page<ApprovalRequest>> myRequests(
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
-        // TODO: 从 JWT 获取当前用户 ID
-        return ApiResponse.ok(approvalService.listByRequester(1L, pageable));
+        return ApiResponse.ok(approvalService.listByRequester(currentUser.userId(), pageable));
     }
 
     @GetMapping("/{id}")
@@ -59,7 +64,8 @@ public class ApprovalController {
     @PutMapping("/{id}/approve")
     public ApiResponse<ApprovalRequest> approve(@PathVariable Long id) {
         ApprovalRequest req = approvalService.approve(id, "Approved");
-        auditService.record("approval_action", 1L, "admin", "Approve #" + id, req.getReason(), "approved");
+        auditService.record("approval_action", currentUser.userId(), currentUser.require().username(),
+                "Approve #" + id, req.getReason(), "approved", currentUser.tenantId());
         return ApiResponse.ok(req);
     }
 

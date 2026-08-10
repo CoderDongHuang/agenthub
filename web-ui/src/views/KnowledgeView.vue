@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { Collection, Delete, Document, Plus, Refresh, Upload } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import api, { runtimeApi } from '../api'
+import api from '../api'
 
 interface KnowledgeDoc {
   id: number
@@ -42,7 +42,7 @@ async function fetchDocs() {
 
 async function fetchStats() {
   try {
-    const response = await runtimeApi.get('/rag/stats')
+    const response = await api.get('/knowledge/stats') as any
     stats.value = response.data?.stats || { total_chunks: 0, documents: 0 }
   } catch {
     stats.value = { total_chunks: 0, documents: 0 }
@@ -66,7 +66,7 @@ async function handleUpload() {
     if (response.code !== 200) throw new Error(response.message || '文档解析失败')
     const documentId = Number(response.data?.id)
     if (documentId) {
-      const indexResponse = await runtimeApi.post('/rag/index', null, { params: { doc_id: documentId } })
+      const indexResponse = await api.post(`/knowledge/docs/${documentId}/index`) as any
       if (indexResponse.data?.status !== 'ok') throw new Error(indexResponse.data?.message || '索引失败')
       ElMessage.success(`文档已解析并建立 ${indexResponse.data.chunks} 个索引分块`)
     } else {
@@ -89,7 +89,7 @@ async function handleAddText() {
     const response = await api.post('/knowledge/text', textForm.value) as any
     if (response.code !== 200) throw new Error(response.message || '文本保存失败')
     const documentId = Number(response.data?.id)
-    const indexResponse = await runtimeApi.post('/rag/index', null, { params: { doc_id: documentId } })
+    const indexResponse = await api.post(`/knowledge/docs/${documentId}/index`) as any
     if (indexResponse.data?.status !== 'ok') throw new Error(indexResponse.data?.message || '索引失败')
     ElMessage.success(`文本知识已添加并建立 ${indexResponse.data.chunks} 个索引分块`)
     textVisible.value = false
@@ -103,7 +103,7 @@ async function handleAddText() {
 async function handleIndex(docId: number) {
   indexingId.value = docId
   try {
-    const response = await runtimeApi.post('/rag/index', null, { params: { doc_id: docId } })
+    const response = await api.post(`/knowledge/docs/${docId}/index`) as any
     if (response.data?.status !== 'ok') throw new Error(response.data?.message)
     ElMessage.success(`索引完成：${response.data.chunks} 个分块`)
     await refreshAll()
@@ -117,7 +117,6 @@ async function handleIndex(docId: number) {
 async function handleDelete(doc: KnowledgeDoc) {
   try {
     await ElMessageBox.confirm(`确定删除“${doc.filename}”吗？`, '删除知识资产', { type: 'warning' })
-    await runtimeApi.delete(`/rag/docs/${doc.id}`).catch(() => undefined)
     const response = await api.delete(`/knowledge/docs/${doc.id}`) as any
     if (response.code !== 200) throw new Error(response.message || '删除失败')
     ElMessage.success('文档已删除')

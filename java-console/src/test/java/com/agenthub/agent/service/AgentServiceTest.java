@@ -4,6 +4,8 @@ import com.agenthub.agent.dto.AgentCreateRequest;
 import com.agenthub.agent.entity.AgentDefinition;
 import com.agenthub.agent.repository.AgentDefinitionRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -13,12 +15,23 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import com.agenthub.common.config.TenantContext;
 
 @ExtendWith(MockitoExtension.class)
 class AgentServiceTest {
 
     @Mock AgentDefinitionRepository agentRepository;
     @InjectMocks AgentService agentService;
+
+    @BeforeEach
+    void setTenant() {
+        TenantContext.set(7L);
+    }
+
+    @AfterEach
+    void clearTenant() {
+        TenantContext.clear();
+    }
 
     @Test
     void create_shouldReturnDraftAgent() {
@@ -33,13 +46,14 @@ class AgentServiceTest {
         assertEquals("Test", agent.getName());
         assertEquals("draft", agent.getStatus());
         assertEquals("deepseek-v3", agent.getModel());
+        assertEquals(7L, agent.getTenantId());
     }
 
     @Test
     void publish_shouldSetStatus() {
         AgentDefinition agent = AgentDefinition.builder().id(1L).name("T").status("draft")
                 .systemPrompt("p").model("m").build();
-        when(agentRepository.findById(1L)).thenReturn(Optional.of(agent));
+        when(agentRepository.findByIdAndTenantId(1L, 7L)).thenReturn(Optional.of(agent));
         when(agentRepository.save(any())).thenReturn(agent);
 
         AgentDefinition result = agentService.publish(1L);
@@ -50,7 +64,7 @@ class AgentServiceTest {
     void disable_shouldSetStatus() {
         AgentDefinition agent = AgentDefinition.builder().id(1L).name("T").status("published")
                 .systemPrompt("p").model("m").build();
-        when(agentRepository.findById(1L)).thenReturn(Optional.of(agent));
+        when(agentRepository.findByIdAndTenantId(1L, 7L)).thenReturn(Optional.of(agent));
         when(agentRepository.save(any())).thenReturn(agent);
 
         AgentDefinition result = agentService.disable(1L);
@@ -59,7 +73,14 @@ class AgentServiceTest {
 
     @Test
     void get_shouldThrowWhenNotFound() {
-        when(agentRepository.findById(99L)).thenReturn(Optional.empty());
+        when(agentRepository.findByIdAndTenantId(99L, 7L)).thenReturn(Optional.empty());
         assertThrows(IllegalArgumentException.class, () -> agentService.get(99L));
+    }
+
+    @Test
+    void get_shouldNotReadAnotherTenant() {
+        when(agentRepository.findByIdAndTenantId(1L, 7L)).thenReturn(Optional.empty());
+        assertThrows(IllegalArgumentException.class, () -> agentService.get(1L));
+        verify(agentRepository, never()).findById(1L);
     }
 }
