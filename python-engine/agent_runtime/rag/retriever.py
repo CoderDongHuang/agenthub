@@ -17,6 +17,7 @@ class Retriever:
         """将文档块索引到向量存储"""
         if not chunks:
             return
+        self.remove(doc_id)
         embeddings = embed_texts(chunks)
         for i, (chunk, emb) in enumerate(zip(chunks, embeddings)):
             self._store.append({
@@ -26,6 +27,10 @@ class Retriever:
                 "embedding": emb,
             })
         log.info(f"Indexed {len(chunks)} chunks from doc {doc_id}")
+
+    def remove(self, doc_id: str):
+        """移除某个文档的全部内存索引。"""
+        self._store = [item for item in self._store if item["doc_id"] != str(doc_id)]
 
     def search(self, query: str, top_k: int = 3) -> List[Tuple[str, float]]:
         """搜索最相关的 top_k 文本块"""
@@ -55,4 +60,7 @@ class Retriever:
         return "\n\n".join(context_parts)
 
     def stats(self) -> dict:
-        return {"total_chunks": len(self._store)}
+        return {
+            "total_chunks": len(self._store),
+            "documents": len({item["doc_id"] for item in self._store}),
+        }
