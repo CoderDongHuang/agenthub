@@ -1,101 +1,44 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuthStore } from '../stores/auth'
+import { ArrowLeft, ArrowRight, Check, Lock, Message, User } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import { useAuthStore } from '../stores/auth'
+import api from '../api'
 
 const router = useRouter()
 const authStore = useAuthStore()
-
-const form = ref({
-  username: 'admin',
-  password: 'admin123',
-})
-
+const mode = ref<'login' | 'register'>('login')
 const loading = ref(false)
-
-const handleLogin = async () => {
-  loading.value = true
-  try {
-    await authStore.login(form.value.username, form.value.password)
-    ElMessage.success('登录成功')
-    router.push('/dashboard')
-  } catch (e: any) {
-    const msg = e?.response?.data?.message || e?.message || '登录失败'
-    ElMessage.error(msg)
-  } finally {
-    loading.value = false
-  }
-}
+const formError = ref('')
+const loginForm = ref({ username: '', password: '' })
+const registerForm = ref({ username: '', password: '', displayName: '', email: '' })
+const passwordScore = computed(() => { const password = registerForm.value.password; return [password.length >= 6, /[A-Z]/.test(password), /\d/.test(password), /[^A-Za-z0-9]/.test(password)].filter(Boolean).length })
+const passwordLabel = computed(() => ['未设置', '较弱', '可用', '良好', '较强'][passwordScore.value])
+function switchMode(next: 'login' | 'register') { mode.value = next; formError.value = '' }
+async function handleLogin() { formError.value = ''; if (!loginForm.value.username || !loginForm.value.password) { formError.value = '请输入用户名和密码。'; return } loading.value = true; try { await authStore.login(loginForm.value.username, loginForm.value.password); router.push('/console/dashboard') } catch (error: any) { formError.value = error?.response?.data?.message || '登录失败，请检查账号信息。' } finally { loading.value = false } }
+async function handleRegister() { formError.value = ''; const form = registerForm.value; if (!form.username || !form.password || !form.displayName) { formError.value = '用户名、显示名称和密码为必填项。'; return } if (form.username.length < 3 || form.password.length < 6) { formError.value = '用户名至少 3 位，密码至少 6 位。'; return } loading.value = true; try { await api.post('/auth/register', form); loginForm.value = { username: form.username, password: '' }; registerForm.value = { username: '', password: '', displayName: '', email: '' }; switchMode('login'); ElMessage.success('账号已创建，请使用新账号登录。') } catch (error: any) { formError.value = error?.response?.data?.message || '注册失败，请稍后重试。' } finally { loading.value = false } }
 </script>
 
 <template>
-  <div class="login-container">
-    <div class="login-card">
-      <h1>🤖 AI Agent Hub</h1>
-      <p class="subtitle">企业级 AI Agent 中台</p>
-
-      <el-form :model="form" @submit.prevent="handleLogin">
-        <el-form-item>
-          <el-input
-            v-model="form.username"
-            placeholder="用户名"
-            prefix-icon="User"
-            size="large"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-input
-            v-model="form.password"
-            type="password"
-            placeholder="密码"
-            prefix-icon="Lock"
-            size="large"
-            show-password
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-button
-            type="primary"
-            size="large"
-            :loading="loading"
-            @click="handleLogin"
-            style="width: 100%"
-          >
-            登 录
-          </el-button>
-        </el-form-item>
-      </el-form>
-    </div>
+  <div class="auth-page">
+    <header class="auth-header"><button @click="router.push('/')"><el-icon><ArrowLeft /></el-icon> 返回官网</button><div><img src="/bg.svg" alt="AgentHub" /><span><strong>AgentHub</strong><small>企业智能工作平台</small></span></div><span>三端服务已连接</span></header>
+    <main class="auth-main">
+      <section class="auth-context"><span class="site-kicker">欢迎回来</span><h1>继续完成<br>今天的工作。</h1><p>登录后可以创建 Agent、编排流程、测试安全护栏，并查看真实的运行与成本数据。</p><div class="context-preview"><div class="preview-head"><span>运行边界</span><b><i /> 三端协作</b></div><div class="preview-metrics"><article><strong>Java</strong><span>权限与治理</span></article><article><strong>Python</strong><span>模型与工具</span></article><article><strong>Vue</strong><span>业务工作台</span></article></div><div class="preview-task"><span class="task-icon"><el-icon><Check /></el-icon></span><p><strong>高风险动作先审批</strong><small>工具参数、审批决定和执行结果进入同一条审计链路</small></p><b>治理</b></div><div class="preview-task"><span class="task-icon blue"><el-icon><Message /></el-icon></span><p><strong>知识切片可恢复</strong><small>文档内容和索引切片持久化，运行时重启后可重新加载</small></p><b>检索</b></div></div>
+      </section>
+      <section class="auth-card"><div class="auth-mode"><button :class="{ active: mode === 'login' }" @click="switchMode('login')">登录</button><button :class="{ active: mode === 'register' }" @click="switchMode('register')">创建账号</button></div><div class="entry-heading"><h2>{{ mode === 'login' ? '进入工作台' : '加入 AgentHub' }}</h2><p>{{ mode === 'login' ? '使用组织账号继续。' : '创建后默认获得 Agent 使用者角色。' }}</p></div>
+        <form v-if="mode === 'login'" class="auth-form" @submit.prevent="handleLogin"><label><span>用户名</span><div><el-icon><User /></el-icon><input v-model.trim="loginForm.username" autocomplete="username" placeholder="例如 admin" /></div></label><label><span>密码</span><div><el-icon><Lock /></el-icon><input v-model="loginForm.password" type="password" autocomplete="current-password" placeholder="输入密码" /></div></label><div v-if="formError" class="form-error">{{ formError }}</div><button class="auth-submit" type="submit" :disabled="loading"><span>{{ loading ? '正在验证...' : '登录' }}</span><el-icon><ArrowRight /></el-icon></button><div class="demo-account"><span>本地演示账号</span><button type="button" @click="loginForm = { username: 'admin', password: 'admin123' }">填入 admin / admin123</button></div></form>
+        <form v-else class="auth-form" @submit.prevent="handleRegister"><div class="field-row"><label><span>用户名 *</span><div><el-icon><User /></el-icon><input v-model.trim="registerForm.username" autocomplete="username" placeholder="至少 3 位" /></div></label><label><span>显示名称 *</span><div><el-icon><Message /></el-icon><input v-model.trim="registerForm.displayName" placeholder="姓名或称呼" /></div></label></div><label><span>工作邮箱</span><div><el-icon><Message /></el-icon><input v-model.trim="registerForm.email" type="email" autocomplete="email" placeholder="name@company.com" /></div></label><label><span>密码 *</span><div><el-icon><Lock /></el-icon><input v-model="registerForm.password" type="password" autocomplete="new-password" placeholder="至少 6 位" /></div></label><div class="password-strength"><span><i v-for="index in 4" :key="index" :class="{ active: index <= passwordScore }" /></span><b>{{ passwordLabel }}</b></div><div v-if="formError" class="form-error">{{ formError }}</div><button class="auth-submit" type="submit" :disabled="loading"><span>{{ loading ? '正在创建...' : '创建账号' }}</span><el-icon><ArrowRight /></el-icon></button><p class="register-note"><el-icon><Check /></el-icon> 账号会纳入组织权限与审计体系。</p></form>
+        <div class="security-note"><el-icon><Lock /></el-icon><span><strong>安全登录</strong><small>JWT 身份验证 · RBAC 权限控制</small></span></div>
+      </section>
+    </main>
   </div>
 </template>
 
 <style scoped>
-.login-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
-
-.login-card {
-  width: 400px;
-  padding: 40px;
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
-  text-align: center;
-}
-
-.login-card h1 {
-  font-size: 28px;
-  margin-bottom: 8px;
-  color: #303133;
-}
-
-.subtitle {
-  color: #909399;
-  margin-bottom: 32px;
-}
+.auth-page { min-height: 100vh; background: #eef2ee; color: var(--site-ink); font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }.auth-header { width: min(1240px, calc(100% - 48px)); height: 76px; margin: 0 auto; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; border-bottom: 1px solid #d5ddd6; }.auth-header > button { justify-self: start; padding: 0; display: flex; align-items: center; gap: 7px; border: 0; background: transparent; color: var(--site-muted); font: inherit; font-size: 10px; cursor: pointer; }.auth-header > div { display: flex; align-items: center; gap: 10px; }.auth-header img { width: 34px; height: 34px; object-fit: contain; }.auth-header div > span { display: flex; flex-direction: column; gap: 2px; }.auth-header strong { font-size: 14px; }.auth-header small { color: var(--site-muted); font-size: 8px; }.auth-header > span { justify-self: end; color: var(--site-primary); font-size: 9px; font-weight: 700; }
+.auth-main { width: min(1120px, calc(100% - 48px)); min-height: calc(100vh - 76px); margin: 0 auto; padding: 55px 0 65px; display: grid; grid-template-columns: 1.08fr .92fr; gap: 90px; align-items: center; }.auth-main > * { min-width: 0; }.auth-context h1 { margin-top: 18px; font-size: 54px; line-height: 1.08; }.auth-context > p { max-width: 570px; margin-top: 20px; color: var(--site-muted); font-size: 14px; line-height: 1.8; }.context-preview { width: 100%; max-width: 620px; margin-top: 34px; padding: 20px; border: 1px solid var(--site-line-strong); border-radius: 8px; background: rgba(255,255,255,.72); box-shadow: 14px 14px 0 #dfe7e0; }.preview-head { min-height: 38px; display: flex; align-items: start; justify-content: space-between; border-bottom: 1px solid var(--site-line); color: var(--site-muted); font-size: 9px; }.preview-head b { display: flex; align-items: center; gap: 6px; color: var(--site-primary); }.preview-head i { width: 7px; height: 7px; border-radius: 50%; background: var(--site-primary); }.preview-metrics { min-width: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--site-line); }.preview-metrics article { min-width: 0; min-height: 90px; padding: 16px 0; display: flex; flex-direction: column; justify-content: flex-end; }.preview-metrics strong { max-width: 100%; font-size: 20px; overflow-wrap: anywhere; }.preview-metrics span { margin-top: 5px; color: var(--site-muted); font-size: 8px; }.preview-task { min-width: 0; min-height: 68px; display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 10px; align-items: center; border-bottom: 1px solid var(--site-line); }.preview-task:last-child { border-bottom: 0; }.task-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 7px; background: var(--site-primary-soft); color: var(--site-primary-dark); }.task-icon.blue { background: var(--site-blue-soft); color: var(--site-blue); }.preview-task p { min-width: 0; display: flex; flex-direction: column; gap: 5px; }.preview-task strong, .preview-task small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.preview-task strong { font-size: 10px; }.preview-task small, .preview-task > b { color: var(--site-muted); font-size: 8px; }.preview-task > b { font-weight: 500; }
+.auth-card { padding: 34px; border: 1px solid var(--site-line); border-radius: 8px; background: white; box-shadow: var(--site-shadow); }.auth-mode { padding: 4px; display: grid; grid-template-columns: 1fr 1fr; border-radius: 7px; background: #eef2ee; }.auth-mode button { min-height: 38px; border: 0; border-radius: 5px; background: transparent; color: var(--site-muted); font: inherit; font-size: 10px; font-weight: 700; cursor: pointer; }.auth-mode button.active { background: white; color: var(--site-primary-dark); box-shadow: 0 2px 7px rgba(45,62,53,.08); }.entry-heading { margin: 34px 0 25px; }.entry-heading h2 { font-size: 28px; }.entry-heading p { margin-top: 7px; color: var(--site-muted); font-size: 10px; }.auth-form { display: flex; flex-direction: column; gap: 15px; }.auth-form label > span { display: block; margin-bottom: 7px; color: #5f6d66; font-size: 9px; font-weight: 700; }.auth-form label > div { min-height: 46px; padding: 0 12px; display: flex; align-items: center; gap: 9px; border: 1px solid var(--site-line); border-radius: 7px; background: #fafbf9; }.auth-form label > div:focus-within { border-color: var(--site-primary); box-shadow: 0 0 0 3px rgba(83,115,99,.1); }.auth-form label .el-icon { color: #8d9892; }.auth-form input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--site-ink); font: inherit; font-size: 11px; }.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }.password-strength { margin-top: -5px; display: flex; align-items: center; justify-content: space-between; }.password-strength > span { width: 78%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }.password-strength i { height: 4px; border-radius: 2px; background: #e0e5e1; }.password-strength i.active { background: var(--site-primary); }.password-strength b { color: var(--site-muted); font-size: 8px; }.form-error { padding: 10px 12px; border-radius: 6px; background: var(--site-coral-soft); color: #9b5848; font-size: 9px; line-height: 1.5; }.auth-submit { min-height: 48px; padding: 0 15px; display: flex; align-items: center; justify-content: space-between; border: 0; border-radius: 7px; background: var(--site-primary-dark); color: white; font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }.auth-submit:disabled { opacity: .55; }.demo-account { padding-top: 14px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--site-line); }.demo-account span { color: var(--site-muted); font-size: 8px; }.demo-account button { padding: 0; border: 0; background: transparent; color: var(--site-primary); font: inherit; font-size: 8px; cursor: pointer; }.register-note { display: flex; align-items: center; gap: 6px; color: var(--site-muted); font-size: 8px; }.security-note { margin-top: 25px; padding-top: 18px; display: flex; align-items: center; gap: 9px; border-top: 1px solid var(--site-line); color: var(--site-primary); }.security-note > span { display: flex; flex-direction: column; gap: 4px; }.security-note strong { color: var(--site-ink); font-size: 9px; }.security-note small { color: var(--site-muted); font-size: 8px; }
+@media (max-width: 900px) { .auth-header { grid-template-columns: 1fr auto; }.auth-header > div { justify-self: end; }.auth-header > span { display: none; }.auth-main { grid-template-columns: 1fr; gap: 50px; }.auth-context { padding-top: 20px; }.auth-card { max-width: 560px; width: 100%; margin: auto; } }
+@media (max-width: 560px) { .auth-page { width: 100%; overflow-x: hidden; }.auth-header { width: calc(100vw - 32px); }.auth-header > div { display: none; }.auth-main { width: 100%; display: block; padding: 40px 16px; }.auth-context, .context-preview, .auth-card { width: calc(100vw - 32px); max-width: calc(100vw - 32px); }.auth-context > p { width: calc(100vw - 32px); max-width: calc(100vw - 32px); overflow-wrap: anywhere; }.auth-context h1 { font-size: 40px; }.context-preview { padding: 14px; box-shadow: 8px 8px 0 #dfe7e0; }.preview-metrics strong { font-size: 17px; }.preview-task > b { display: none; }.auth-card { margin-top: 50px; padding: 24px 16px; }.field-row { grid-template-columns: 1fr; } }
 </style>
