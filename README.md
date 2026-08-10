@@ -112,6 +112,7 @@ npm install && npm run dev   # :5173
 
 | 模块 | 功能 |
 |------|------|
+| **运行态势中心** | 聚合 Agent、审批、工具、用户、审计、Token 使用与 Python Runtime 状态 |
 | **Agent 管理** | 表单创建 Agent，选模型、写提示词、发布上线 |
 | **多模型** | DeepSeek / GPT-4o / Claude / 通义千问，设 Key 即用 |
 | **流式对话** | SSE 实时推送，支持工具调用（计算器、搜索等） |
@@ -120,6 +121,14 @@ npm install && npm run dev   # :5173
 | **工具生态** | 开发者写 Python 丢 custom/ 目录，自动注册 + 同步到市场 |
 | **知识库 RAG** | 上传文档 → 分块索引 → 对话时自动检索注入 |
 | **多渠道** | Web 控制台 / REST API (API Key) / 网页嵌入脚本 |
+
+### 运行态势接口
+
+| 接口 | 所属端 | 用途 |
+|------|--------|------|
+| `GET /runtime/capabilities` | Python | 返回模型供应商配置数量、工具风险分布、RAG 索引量和运行时长，不返回任何密钥 |
+| `GET /api/platform/overview` | Java | 聚合数据库业务指标与 Python 运行时快照，供控制台首页一次加载 |
+| `GET /api/auth/me` | Java | 根据 JWT 恢复当前用户、显示名称和角色，支持刷新页面后恢复会话 |
 
 ---
 
