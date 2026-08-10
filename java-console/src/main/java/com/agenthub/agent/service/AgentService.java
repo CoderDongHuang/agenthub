@@ -6,6 +6,7 @@ import com.agenthub.agent.repository.AgentDefinitionRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import com.agenthub.common.config.TenantContext;
 
 import java.time.LocalDateTime;
 
@@ -29,17 +30,17 @@ public class AgentService {
                 .icon(request.getIcon())
                 .status("draft")
                 .createdBy(userId)
-                .tenantId(0L)
+                .tenantId(requireTenant())
                 .build();
         return agentRepository.save(agent);
     }
 
     public Page<AgentDefinition> list(Pageable pageable) {
-        return agentRepository.findByTenantIdOrderByUpdatedAtDesc(0L, pageable);
+        return agentRepository.findByTenantIdOrderByUpdatedAtDesc(requireTenant(), pageable);
     }
 
     public AgentDefinition get(Long id) {
-        return agentRepository.findById(id)
+        return agentRepository.findByIdAndTenantId(id, requireTenant())
                 .orElseThrow(() -> new IllegalArgumentException("Agent 不存在: " + id));
     }
 
@@ -75,10 +76,17 @@ public class AgentService {
 
     public java.util.Map<String, Object> stats() {
         java.util.Map<String, Object> stats = new java.util.HashMap<>();
-        stats.put("total", agentRepository.countByTenantId(0L));
-        stats.put("published", agentRepository.countByStatus("published"));
-        stats.put("draft", agentRepository.countByStatus("draft"));
-        stats.put("disabled", agentRepository.countByStatus("disabled"));
+        Long tenantId = requireTenant();
+        stats.put("total", agentRepository.countByTenantId(tenantId));
+        stats.put("published", agentRepository.countByTenantIdAndStatus(tenantId, "published"));
+        stats.put("draft", agentRepository.countByTenantIdAndStatus(tenantId, "draft"));
+        stats.put("disabled", agentRepository.countByTenantIdAndStatus(tenantId, "disabled"));
         return stats;
+    }
+
+    private Long requireTenant() {
+        Long tenantId = TenantContext.get();
+        if (tenantId == null) throw new IllegalStateException("Tenant context is required");
+        return tenantId;
     }
 }

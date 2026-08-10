@@ -12,21 +12,23 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import com.agenthub.security.CurrentUser;
 
 @RestController
 @RequestMapping("/api/agents")
 public class AgentController {
 
     private final AgentService agentService;
+    private final CurrentUser currentUser;
 
-    public AgentController(AgentService agentService) {
+    public AgentController(AgentService agentService, CurrentUser currentUser) {
         this.agentService = agentService;
+        this.currentUser = currentUser;
     }
 
     @PostMapping
     public ApiResponse<AgentDefinition> create(@Valid @RequestBody AgentCreateRequest request) {
-        // TODO: 从 JWT 获取当前用户 ID
-        AgentDefinition agent = agentService.create(request, 1L);
+        AgentDefinition agent = agentService.create(request, currentUser.userId());
         return ApiResponse.ok(agent);
     }
 

@@ -5,6 +5,7 @@ import com.agenthub.approval.repository.ApprovalRequestRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import com.agenthub.common.config.TenantContext;
 
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -30,7 +31,7 @@ public class ApprovalService {
                 .reason(reason)
                 .context(context)
                 .status("pending")
-                .tenantId(0L)
+                .tenantId(requireTenant())
                 .build();
         return approvalRepository.save(req);
     }
@@ -56,23 +57,29 @@ public class ApprovalService {
     }
 
     public ApprovalRequest getRequest(Long id) {
-        return approvalRepository.findById(id)
+        return approvalRepository.findByIdAndTenantId(id, requireTenant())
                 .orElseThrow(() -> new IllegalArgumentException("审批请求不存在: " + id));
     }
 
     public Page<ApprovalRequest> listPending(Pageable pageable) {
-        return approvalRepository.findByStatusOrderByCreatedAtDesc("pending", pageable);
+        return approvalRepository.findByTenantIdAndStatusOrderByCreatedAtDesc(requireTenant(), "pending", pageable);
     }
 
     public Page<ApprovalRequest> listByRequester(Long requesterId, Pageable pageable) {
-        return approvalRepository.findByRequesterIdOrderByCreatedAtDesc(requesterId, pageable);
+        return approvalRepository.findByTenantIdAndRequesterIdOrderByCreatedAtDesc(requireTenant(), requesterId, pageable);
     }
 
     public Map<String, Object> stats() {
         return Map.of(
-                "pending", approvalRepository.countByStatus("pending"),
-                "approved", approvalRepository.countByStatus("approved"),
-                "rejected", approvalRepository.countByStatus("rejected")
+                "pending", approvalRepository.countByTenantIdAndStatus(requireTenant(), "pending"),
+                "approved", approvalRepository.countByTenantIdAndStatus(requireTenant(), "approved"),
+                "rejected", approvalRepository.countByTenantIdAndStatus(requireTenant(), "rejected")
         );
+    }
+
+    private Long requireTenant() {
+        Long tenantId = TenantContext.get();
+        if (tenantId == null) throw new IllegalStateException("Tenant context is required");
+        return tenantId;
     }
 }

@@ -12,14 +12,16 @@ import java.time.LocalDateTime;
 public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
 
     Page<AuditLog> findAllByOrderByCreatedAtDesc(Pageable pageable);
+    Page<AuditLog> findByTenantIdOrderByCreatedAtDesc(Long tenantId, Pageable pageable);
 
-    @Query("SELECT a FROM AuditLog a WHERE " +
+    @Query("SELECT a FROM AuditLog a WHERE a.tenantId = :tenantId AND " +
            "(:eventType IS NULL OR a.eventType = :eventType) AND " +
            "(:userId IS NULL OR a.userId = :userId) AND " +
            "(:startTime IS NULL OR a.createdAt >= :startTime) AND " +
            "(:endTime IS NULL OR a.createdAt <= :endTime) " +
            "ORDER BY a.createdAt DESC")
-    Page<AuditLog> search(@Param("eventType") String eventType,
+    Page<AuditLog> search(@Param("tenantId") Long tenantId,
+                          @Param("eventType") String eventType,
                           @Param("userId") Long userId,
                           @Param("startTime") LocalDateTime startTime,
                           @Param("endTime") LocalDateTime endTime,

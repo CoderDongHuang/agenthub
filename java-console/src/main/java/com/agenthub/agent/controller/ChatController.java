@@ -17,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import com.agenthub.security.CurrentUser;
 
 @RestController
 @RequestMapping("/api/agents")
@@ -26,12 +27,14 @@ public class ChatController {
     private final PythonAgentClient pythonAgentClient;
     private final AuditService auditService;
     private final ExecutorService executor = Executors.newCachedThreadPool();
+    private final CurrentUser currentUser;
 
     public ChatController(PythonAgentClient pythonAgentClient, AuditService auditService,
-                          JdbcTemplate jdbcTemplate) {
+                          JdbcTemplate jdbcTemplate, CurrentUser currentUser) {
         this.pythonAgentClient = pythonAgentClient;
         this.auditService = auditService;
         this.jdbcTemplate = jdbcTemplate;
+        this.currentUser = currentUser;
     }
 
     private final JdbcTemplate jdbcTemplate;
@@ -40,7 +43,8 @@ public class ChatController {
     public SseEmitter chat(@PathVariable Long agentId, @RequestBody Map<String, String> body) {
         String message = body.get("message");
         String sessionId = body.getOrDefault("sessionId", UUID.randomUUID().toString());
-        String userId = body.getOrDefault("userId", "1");
+        String userId = String.valueOf(currentUser.userId());
+        String tenantId = String.valueOf(currentUser.tenantId());
 
         SseEmitter emitter = new SseEmitter(300_000L); // 5 分钟超时
 
@@ -48,6 +52,7 @@ public class ChatController {
                 .setSessionId(sessionId)
                 .setAgentId(String.valueOf(agentId))
                 .setUserId(userId)
+                .setTenantId(tenantId)
                 .setMessage(message)
                 .setChannel("web")
                 .build();
@@ -93,15 +98,17 @@ public class ChatController {
                     () -> {
                         // 记录审计日志
                         auditService.record("agent_execute", Long.valueOf(userId), "user",
-                                "Agent chat: agent=" + agentId, message, "success");
+                                "Agent chat: agent=" + agentId, message, "success", Long.valueOf(tenantId));
                         // 记录 Token 消耗（粗略估算: 英文 4 字符≈1 token, 中文 2 字符≈1 token）
                         int inputTokens = message.length() / 3 + 1;
                         int outputTokens = outputText.length() / 3 + 1;
                         double cost = (inputTokens + outputTokens) * 0.000002; // 约 $2/1M tokens
                         try {
                             jdbcTemplate.update(
-                                "INSERT INTO token_usage (agent_id, session_id, user_id, model, input_tokens, output_tokens, cost) VALUES (?,?,?,?,?,?,?)",
-                                Long.valueOf(agentId), sessionId, Long.valueOf(userId), "deepseek-v3", inputTokens, outputTokens, cost
+                                "INSERT INTO token_usage (tenant_id, agent_id, session_id, user_id, model, input_tokens, output_tokens, cost) " +
+                                        "VALUES (?,?,?,?,?,?,?,?)",
+                                Long.valueOf(tenantId), Long.valueOf(agentId), sessionId, Long.valueOf(userId),
+                                "deepseek-v3", inputTokens, outputTokens, cost
                             );
                         } catch (Exception ignored) {}
                         try {
@@ -122,7 +129,8 @@ public class ChatController {
     public ApiResponse<Map<String, String>> chatSimple(@PathVariable Long agentId, @RequestBody Map<String, String> body) {
         String message = body.get("message");
         String sessionId = UUID.randomUUID().toString();
-        String userId = "1";
+        String userId = String.valueOf(currentUser.userId());
+        String tenantId = String.valueOf(currentUser.tenantId());
 
         StringBuilder fullText = new StringBuilder();
 
@@ -130,6 +138,7 @@ public class ChatController {
                 .setSessionId(sessionId)
                 .setAgentId(String.valueOf(agentId))
                 .setUserId(userId)
+                .setTenantId(tenantId)
                 .setMessage(message)
                 .setChannel("web")
                 .build();

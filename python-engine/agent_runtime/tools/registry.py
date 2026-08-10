@@ -62,11 +62,16 @@ class ToolRegistry:
     async def sync_to_java(self):
         """将已注册的工具同步到 Java Console"""
         import httpx
+        internal_token = os.getenv("AGENTHUB_INTERNAL_TOKEN", "")
+        if len(internal_token) < 32:
+            raise RuntimeError("AGENTHUB_INTERNAL_TOKEN must contain at least 32 characters")
+        java_console_url = os.getenv("JAVA_CONSOLE_URL", "http://localhost:8080").rstrip("/")
         async with httpx.AsyncClient(timeout=10) as client:
             for tool in self.list_all():
                 try:
                     resp = await client.post(
-                        "http://localhost:8080/api/tools/register",
+                        f"{java_console_url}/api/tools/register",
+                        headers={"X-Internal-Token": internal_token, "X-Tenant-Id": "0"},
                         json={
                             "toolName": tool.name,
                             "toolCode": tool.name,

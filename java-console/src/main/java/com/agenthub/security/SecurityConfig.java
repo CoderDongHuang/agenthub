@@ -18,15 +18,25 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
+import java.util.Arrays;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final InternalAuthenticationFilter internalAuthenticationFilter;
+    private final List<String> allowedOrigins;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
+                          InternalAuthenticationFilter internalAuthenticationFilter,
+                          @Value("${agenthub.cors.allowed-origins}") String allowedOrigins) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.internalAuthenticationFilter = internalAuthenticationFilter;
+        this.allowedOrigins = Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim).filter(origin -> !origin.isBlank()).toList();
+        if (this.allowedOrigins.isEmpty()) throw new IllegalStateException("At least one CORS origin is required");
     }
 
     @Bean
@@ -39,18 +49,18 @@ public class SecurityConfig {
                 .dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
                 // 公开接口
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()  // CORS 预检
-                .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register").permitAll()
                 .requestMatchers("/api/health").permitAll()
-                .requestMatchers("/api/approvals/create").permitAll()  // Python 内部调用
-                .requestMatchers("/api/tools/register").permitAll()   // Python 内部调用
                 .requestMatchers("/api/v1/**").permitAll()           // API Key 认证
-                .requestMatchers("/api/knowledge/docs/**").permitAll() // Python 内部调用
-                .requestMatchers("/api/internal/**").permitAll()     // 内部 Token 由控制器校验
                 .requestMatchers("/api-docs/**", "/swagger-ui/**").permitAll()
+                .requestMatchers("/api/internal/**", "/api/approvals/create", "/api/tools/register")
+                    .hasRole("INTERNAL")
+                .requestMatchers("/api/users/**", "/api/tenants/**").hasRole("ADMIN")
                 // 需要认证
                 .requestMatchers("/api/**").authenticated()
-                .anyRequest().permitAll()
+                .anyRequest().denyAll()
             )
+            .addFilterBefore(internalAuthenticationFilter, JwtAuthenticationFilter.class)
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
@@ -59,9 +69,9 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.addAllowedOriginPattern("*");
-        config.addAllowedMethod("*");
-        config.addAllowedHeader("*");
+        config.setAllowedOrigins(allowedOrigins);
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-API-Key"));
         config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

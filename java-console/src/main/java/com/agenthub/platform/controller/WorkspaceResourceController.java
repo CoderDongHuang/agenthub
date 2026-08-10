@@ -8,6 +8,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestClient;
+import com.agenthub.security.CurrentUser;
+import com.agenthub.platform.service.WebhookUrlValidator;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -22,10 +24,15 @@ public class WorkspaceResourceController {
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
     private final RestClient restClient = RestClient.create();
+    private final CurrentUser currentUser;
+    private final WebhookUrlValidator webhookUrlValidator;
 
-    public WorkspaceResourceController(JdbcTemplate jdbc, ObjectMapper objectMapper) {
+    public WorkspaceResourceController(JdbcTemplate jdbc, ObjectMapper objectMapper,
+                                       CurrentUser currentUser, WebhookUrlValidator webhookUrlValidator) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
+        this.currentUser = currentUser;
+        this.webhookUrlValidator = webhookUrlValidator;
     }
 
     @GetMapping("/{type}")
@@ -33,9 +40,9 @@ public class WorkspaceResourceController {
         validateType(type);
         List<Map<String, Object>> rows = jdbc.queryForList(
                 "SELECT id, resource_type, resource_key, name, description, config::text AS config, status, " +
-                        "created_at, updated_at FROM workspace_resource WHERE tenant_id = 0 AND resource_type = ? " +
+                        "created_at, updated_at FROM workspace_resource WHERE tenant_id = ? AND resource_type = ? " +
                         "ORDER BY updated_at DESC, id",
-                type
+                currentUser.tenantId(), type
         );
         return ApiResponse.ok(rows.stream().map(this::normalize).toList());
     }
@@ -51,9 +58,9 @@ public class WorkspaceResourceController {
         String status = text(body.getOrDefault("status", "draft"));
         String config = toJson(body.getOrDefault("config", Map.of()));
         Long id = jdbc.queryForObject(
-                "INSERT INTO workspace_resource (resource_type, resource_key, name, description, config, status, created_by) " +
-                        "VALUES (?,?,?,?,?::jsonb,?,1) RETURNING id",
-                Long.class, type, key, name, description, config, status
+                "INSERT INTO workspace_resource (tenant_id, resource_type, resource_key, name, description, config, status, created_by) " +
+                        "VALUES (?,?,?,?,?,?::jsonb,?,?) RETURNING id",
+                Long.class, currentUser.tenantId(), type, key, name, description, config, status, currentUser.userId()
         );
         return get(type, id);
     }
@@ -63,8 +70,8 @@ public class WorkspaceResourceController {
         validateType(type);
         List<Map<String, Object>> rows = jdbc.queryForList(
                 "SELECT id, resource_type, resource_key, name, description, config::text AS config, status, " +
-                        "created_at, updated_at FROM workspace_resource WHERE id = ? AND resource_type = ?",
-                id, type
+                "created_at, updated_at FROM workspace_resource WHERE id = ? AND tenant_id = ? AND resource_type = ?",
+                id, currentUser.tenantId(), type
         );
         return rows.isEmpty() ? ApiResponse.error(404, "Resource not found") : ApiResponse.ok(normalize(rows.get(0)));
     }
@@ -81,8 +88,9 @@ public class WorkspaceResourceController {
         String status = text(body.getOrDefault("status", current.get("status")));
         Object configValue = body.containsKey("config") ? body.get("config") : current.get("config");
         jdbc.update(
-                "UPDATE workspace_resource SET name = ?, description = ?, config = ?::jsonb, status = ?, updated_at = NOW() WHERE id = ?",
-                name, description, toJson(configValue), status, id
+                "UPDATE workspace_resource SET name = ?, description = ?, config = ?::jsonb, status = ?, updated_at = NOW() " +
+                        "WHERE id = ? AND tenant_id = ?",
+                name, description, toJson(configValue), status, id, currentUser.tenantId()
         );
         return get(type, id);
     }
@@ -90,7 +98,8 @@ public class WorkspaceResourceController {
     @DeleteMapping("/{type}/{id}")
     public ApiResponse<String> delete(@PathVariable String type, @PathVariable Long id) {
         validateType(type);
-        int affected = jdbc.update("DELETE FROM workspace_resource WHERE id = ? AND resource_type = ?", id, type);
+        int affected = jdbc.update("DELETE FROM workspace_resource WHERE id = ? AND tenant_id = ? AND resource_type = ?",
+                id, currentUser.tenantId(), type);
         return affected == 0 ? ApiResponse.error(404, "Resource not found") : ApiResponse.ok("Resource deleted");
     }
 
@@ -143,6 +152,7 @@ public class WorkspaceResourceController {
 
     @GetMapping("/workflow/{id}/executions")
     public ApiResponse<List<Map<String, Object>>> workflowExecutions(@PathVariable Long id) {
+        getResource("workflow", id);
         List<Map<String, Object>> rows = jdbc.queryForList(
                 "SELECT id, status, result::text AS result, started_at, completed_at FROM workspace_execution " +
                         "WHERE resource_id = ? ORDER BY started_at DESC LIMIT 20",
@@ -209,7 +219,8 @@ public class WorkspaceResourceController {
     public ApiResponse<Map<String, Object>> publishGuardrails() {
         int updated = jdbc.update(
                 "UPDATE workspace_resource SET status = CASE WHEN COALESCE((config->>'enabled')::boolean, false) " +
-                        "THEN 'published' ELSE 'inactive' END, updated_at = NOW() WHERE resource_type = 'guardrail'"
+                        "THEN 'published' ELSE 'inactive' END, updated_at = NOW() " +
+                        "WHERE tenant_id = ? AND resource_type = 'guardrail'", currentUser.tenantId()
         );
         return ApiResponse.ok(Map.of("published", updated, "publishedAt", LocalDateTime.now().toString()));
     }
@@ -230,12 +241,13 @@ public class WorkspaceResourceController {
             return ApiResponse.error(400, "Webhook URL is required before testing " + resource.get("name"));
         }
         try {
+            var safeWebhookUri = webhookUrlValidator.validate(webhookUrl);
             Object payload = switch (type) {
                 case "dingtalk" -> Map.of("msgtype", "text", "text", Map.of("content", message));
                 case "feishu" -> Map.of("msg_type", "text", "content", Map.of("text", message));
                 default -> Map.of("text", message);
             };
-            ResponseEntity<Void> response = restClient.post().uri(webhookUrl).body(payload).retrieve().toBodilessEntity();
+            ResponseEntity<Void> response = restClient.post().uri(safeWebhookUri).body(payload).retrieve().toBodilessEntity();
             return ApiResponse.ok(Map.of("channel", type, "status", "delivered", "httpStatus", response.getStatusCode().value()));
         } catch (Exception exception) {
             return ApiResponse.error(502, "Channel delivery failed: " + exception.getMessage());
@@ -245,16 +257,16 @@ public class WorkspaceResourceController {
     private List<Map<String, Object>> listEnabled(String type) {
         return jdbc.queryForList(
                 "SELECT id, resource_key, name, description, config::text AS config, status FROM workspace_resource " +
-                        "WHERE tenant_id = 0 AND resource_type = ? AND COALESCE((config->>'enabled')::boolean, false) = true",
-                type
+                        "WHERE tenant_id = ? AND resource_type = ? AND COALESCE((config->>'enabled')::boolean, false) = true",
+                currentUser.tenantId(), type
         ).stream().map(this::normalize).toList();
     }
 
     private Map<String, Object> getResource(String type, Long id) {
         List<Map<String, Object>> rows = jdbc.queryForList(
                 "SELECT id, resource_type, resource_key, name, description, config::text AS config, status FROM workspace_resource " +
-                        "WHERE id = ? AND resource_type = ?",
-                id, type
+                "WHERE id = ? AND tenant_id = ? AND resource_type = ?",
+                id, currentUser.tenantId(), type
         );
         if (rows.isEmpty()) {
             throw new NoSuchElementException("Resource not found");

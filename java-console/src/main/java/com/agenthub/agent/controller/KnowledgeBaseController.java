@@ -9,6 +9,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
+import com.agenthub.common.config.TenantContext;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.client.RestClient;
 
 @RestController
 @RequestMapping("/api/knowledge")
@@ -16,10 +19,16 @@ public class KnowledgeBaseController {
 
     private final JdbcTemplate jdbc;
     private final DocumentExtractionService extractionService;
+    private final RestClient runtimeClient;
+    private final String internalToken;
 
-    public KnowledgeBaseController(JdbcTemplate jdbc, DocumentExtractionService extractionService) {
+    public KnowledgeBaseController(JdbcTemplate jdbc, DocumentExtractionService extractionService,
+                                   @Value("${python.runtime.base-url}") String runtimeBaseUrl,
+                                   @Value("${agenthub.internal-token}") String internalToken) {
         this.jdbc = jdbc;
         this.extractionService = extractionService;
+        this.runtimeClient = RestClient.builder().baseUrl(runtimeBaseUrl).build();
+        this.internalToken = internalToken;
     }
 
     @PostMapping("/upload")
@@ -28,6 +37,7 @@ public class KnowledgeBaseController {
             @RequestParam(defaultValue = "1") Long kbId) {
         try {
             DocumentExtractionService.ExtractedDocument document = extractionService.extract(file);
+            requireKnowledgeBase(kbId);
             Long id = jdbc.queryForObject(
                     "INSERT INTO knowledge_document (kb_id, filename, file_type, file_size, content, status) " +
                             "VALUES (?,?,?,?,?,'uploaded') RETURNING id",
@@ -57,6 +67,7 @@ public class KnowledgeBaseController {
         if (content.isBlank()) {
             return ApiResponse.error(400, "Content is required");
         }
+        requireKnowledgeBase(kbId);
 
         Long id = jdbc.queryForObject(
                 "INSERT INTO knowledge_document (kb_id, filename, file_type, file_size, content, status) " +
@@ -70,22 +81,28 @@ public class KnowledgeBaseController {
     @GetMapping("/docs")
     public ApiResponse<List<Map<String, Object>>> listDocs(@RequestParam(defaultValue = "1") Long kbId) {
         return ApiResponse.ok(jdbc.queryForList(
-                "SELECT id, kb_id, filename, file_type, file_size, chunk_count, status, created_at " +
-                        "FROM knowledge_document WHERE kb_id = ? ORDER BY created_at DESC",
-                kbId
+                "SELECT doc.id, doc.kb_id, doc.filename, doc.file_type, doc.file_size, doc.chunk_count, " +
+                        "doc.status, doc.created_at " +
+                "FROM knowledge_document doc JOIN knowledge_base kb ON kb.id = doc.kb_id " +
+                        "WHERE doc.kb_id = ? AND kb.tenant_id = ? ORDER BY doc.created_at DESC",
+                kbId, tenantId()
         ));
     }
 
     @GetMapping("/docs/chunks")
     public ApiResponse<List<Map<String, Object>>> listChunks() {
         return ApiResponse.ok(jdbc.queryForList(
-                "SELECT doc_id, chunk_index, content FROM knowledge_chunk ORDER BY doc_id, chunk_index"
+                "SELECT kb.tenant_id, chunk.doc_id, chunk.chunk_index, chunk.content FROM knowledge_chunk chunk " +
+                        "JOIN knowledge_document doc ON doc.id = chunk.doc_id JOIN knowledge_base kb ON kb.id = doc.kb_id " +
+                        "WHERE kb.tenant_id = ? ORDER BY chunk.doc_id, chunk.chunk_index", tenantId()
         ));
     }
 
     @GetMapping("/docs/{id}")
     public ApiResponse<Map<String, Object>> getDoc(@PathVariable Long id) {
-        List<Map<String, Object>> docs = jdbc.queryForList("SELECT * FROM knowledge_document WHERE id = ?", id);
+        List<Map<String, Object>> docs = jdbc.queryForList(
+                "SELECT doc.* FROM knowledge_document doc JOIN knowledge_base kb ON kb.id = doc.kb_id " +
+                        "WHERE doc.id = ? AND kb.tenant_id = ?", id, tenantId());
         return docs.isEmpty() ? ApiResponse.error(404, "Document not found") : ApiResponse.ok(docs.get(0));
     }
 
@@ -98,6 +115,7 @@ public class KnowledgeBaseController {
         if (!(rawChunks instanceof List<?> chunks)) {
             return ApiResponse.error(400, "chunks must be an array");
         }
+        requireDocument(id);
         jdbc.update("DELETE FROM knowledge_chunk WHERE doc_id = ?", id);
         int index = 0;
         for (Object chunk : chunks) {
@@ -118,7 +136,48 @@ public class KnowledgeBaseController {
 
     @DeleteMapping("/docs/{id}")
     public ApiResponse<String> deleteDoc(@PathVariable Long id) {
+        requireDocument(id);
+        runtimeClient.delete().uri("/rag/docs/{id}?tenant_id={tenantId}", id, tenantId())
+                .header("X-Internal-Token", internalToken).retrieve().toBodilessEntity();
         int affected = jdbc.update("DELETE FROM knowledge_document WHERE id = ?", id);
         return affected == 0 ? ApiResponse.error(404, "Document not found") : ApiResponse.ok("Document deleted");
+    }
+
+    @PostMapping("/docs/{id}/index")
+    public ApiResponse<Map<String, Object>> indexDocument(@PathVariable Long id) {
+        requireDocument(id);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> response = runtimeClient.post()
+                .uri("/rag/index?doc_id={id}&tenant_id={tenantId}", id, tenantId())
+                .header("X-Internal-Token", internalToken).retrieve().body(Map.class);
+        return ApiResponse.ok(response == null ? Map.of() : response);
+    }
+
+    @GetMapping("/stats")
+    public ApiResponse<Map<String, Object>> stats() {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> response = runtimeClient.get()
+                .uri("/rag/stats?tenant_id={tenantId}", tenantId())
+                .header("X-Internal-Token", internalToken).retrieve().body(Map.class);
+        return ApiResponse.ok(response == null ? Map.of() : response);
+    }
+
+    private void requireKnowledgeBase(Long kbId) {
+        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM knowledge_base WHERE id = ? AND tenant_id = ?",
+                Integer.class, kbId, tenantId());
+        if (count == null || count == 0) throw new IllegalArgumentException("Knowledge base not found");
+    }
+
+    private void requireDocument(Long documentId) {
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM knowledge_document doc JOIN knowledge_base kb ON kb.id = doc.kb_id " +
+                        "WHERE doc.id = ? AND kb.tenant_id = ?", Integer.class, documentId, tenantId());
+        if (count == null || count == 0) throw new IllegalArgumentException("Document not found");
+    }
+
+    private Long tenantId() {
+        Long tenantId = TenantContext.get();
+        if (tenantId == null) throw new IllegalStateException("Tenant context is required");
+        return tenantId;
     }
 }

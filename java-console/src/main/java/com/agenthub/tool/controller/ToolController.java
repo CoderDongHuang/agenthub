@@ -9,6 +9,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
+import com.agenthub.security.CurrentUser;
 
 @RestController
 @RequestMapping("/api/tools")
@@ -16,9 +17,11 @@ public class ToolController {
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final CurrentUser currentUser;
 
-    public ToolController(JdbcTemplate jdbc) {
+    public ToolController(JdbcTemplate jdbc, CurrentUser currentUser) {
         this.jdbc = jdbc;
+        this.currentUser = currentUser;
     }
 
     private String toJsonString(Object obj) {
@@ -36,11 +39,13 @@ public class ToolController {
         String jsonSchema = toJsonString(body.getOrDefault("jsonSchema", "{}"));
 
         Integer count = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM tool_definition WHERE tool_code = ?", Integer.class, toolCode
+                "SELECT COUNT(*) FROM tool_definition WHERE tenant_id = ? AND tool_code = ?",
+                Integer.class, currentUser.tenantId(), toolCode
         );
         if (count != null && count > 0) {
             jdbc.update(
-                    "UPDATE tool_definition SET tool_name=?, description=?, category=?, risk_level=?, rate_limit=?, timeout_seconds=?, json_schema=?::jsonb, updated_at=NOW() WHERE tool_code=?",
+                    "UPDATE tool_definition SET tool_name=?, description=?, category=?, risk_level=?, rate_limit=?, " +
+                            "timeout_seconds=?, json_schema=?::jsonb, updated_at=NOW() WHERE tenant_id=? AND tool_code=?",
                     body.getOrDefault("toolName", ""),
                     body.getOrDefault("description", ""),
                     body.getOrDefault("category", "General"),
@@ -48,11 +53,13 @@ public class ToolController {
                     body.getOrDefault("rateLimit", 0),
                     body.getOrDefault("timeoutSeconds", 30),
                     jsonSchema,
-                    toolCode
+                    currentUser.tenantId(), toolCode
             );
         } else {
             jdbc.update(
-                    "INSERT INTO tool_definition (tool_name, tool_code, description, category, risk_level, rate_limit, timeout_seconds, json_schema, status) VALUES (?,?,?,?,?,?,?,?::jsonb,'active')",
+                    "INSERT INTO tool_definition (tenant_id, tool_name, tool_code, description, category, risk_level, " +
+                            "rate_limit, timeout_seconds, json_schema, status) VALUES (?,?,?,?,?,?,?,?,?::jsonb,'active')",
+                    currentUser.tenantId(),
                     body.getOrDefault("toolName", ""),
                     toolCode,
                     body.getOrDefault("description", ""),
@@ -69,7 +76,7 @@ public class ToolController {
     @GetMapping
     public ApiResponse<Page<Map<String, Object>>> list(Pageable pageable) {
         List<Map<String, Object>> tools = jdbc.queryForList(
-                "SELECT * FROM tool_definition ORDER BY created_at DESC"
+                "SELECT * FROM tool_definition WHERE tenant_id = ? ORDER BY created_at DESC", currentUser.tenantId()
         );
         long total = tools.size();
         int start = (int) pageable.getOffset();
