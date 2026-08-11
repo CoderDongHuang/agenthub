@@ -35,7 +35,7 @@ def embed_texts(texts: List[str]) -> List[List[float]]:
     return [_tfidf_vector(t) for t in texts]
 
 
-def _tfidf_vector(text: str, dims: int = 128) -> List[float]:
+def _tfidf_vector(text: str, dims: int = 1536) -> List[float]:
     """简易 TF-IDF 风格向量 (无需外部 API)"""
     # 分词
     words = re.findall(r'[a-zA-Z0-9一-鿿]+', text.lower())

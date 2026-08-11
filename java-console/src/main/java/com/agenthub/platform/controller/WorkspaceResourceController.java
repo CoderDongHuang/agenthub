@@ -105,7 +105,8 @@ public class WorkspaceResourceController {
 
     @PostMapping("/workflow/{id}/run")
     @Transactional
-    public ApiResponse<Map<String, Object>> runWorkflow(@PathVariable Long id) {
+    public ApiResponse<Map<String, Object>> runWorkflow(@PathVariable Long id,
+            @RequestBody(required = false) Map<String, Object> body) {
         Map<String, Object> resource = getResource("workflow", id);
         Map<String, Object> config = asMap(resource.get("config"));
         Object rawNodes = config.get("nodes");
@@ -113,13 +114,25 @@ public class WorkspaceResourceController {
             return ApiResponse.error(400, "Workflow has no executable nodes");
         }
 
+        String idempotencyKey = body == null ? null : text(body.get("idempotencyKey"));
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            List<Map<String, Object>> existing = jdbc.queryForList(
+                    "SELECT id, status, result::text AS result, started_at FROM workspace_execution " +
+                            "WHERE tenant_id=? AND resource_id=? AND idempotency_key=?", currentUser.tenantId(), id, idempotencyKey);
+            if (!existing.isEmpty()) return ApiResponse.ok(normalizeExecution(existing.get(0)));
+        }
         List<Map<String, Object>> steps = new ArrayList<>();
         int order = 1;
         for (Object rawNode : nodes) {
             Map<String, Object> node = asMap(rawNode);
             String nodeType = text(node.getOrDefault("type", "unknown"));
             String title = text(node.getOrDefault("title", "Untitled node"));
-            String stepStatus = "approval".equals(nodeType) ? "waiting_for_approval" : "completed";
+            String stepStatus = switch (nodeType) {
+                case "entry", "output", "branch" -> "completed";
+                case "approval" -> "waiting_for_approval";
+                case "agent", "tool" -> "queued";
+                default -> "failed";
+            };
             steps.add(Map.of(
                     "order", order++,
                     "nodeId", node.getOrDefault("id", order),
@@ -127,12 +140,11 @@ public class WorkspaceResourceController {
                     "title", title,
                     "status", stepStatus
             ));
-            if ("approval".equals(nodeType)) {
+            if (!"completed".equals(stepStatus)) {
                 break;
             }
         }
-        String executionStatus = steps.stream().anyMatch(step -> "waiting_for_approval".equals(step.get("status")))
-                ? "waiting_for_approval" : "completed";
+        String executionStatus = text(steps.get(steps.size() - 1).get("status"));
         Map<String, Object> result = Map.of(
                 "workflowId", id,
                 "workflowName", resource.get("name"),
@@ -140,14 +152,45 @@ public class WorkspaceResourceController {
                 "status", executionStatus
         );
         Long executionId = jdbc.queryForObject(
-                "INSERT INTO workspace_execution (resource_id, execution_type, status, result, created_by, completed_at) " +
-                        "VALUES (?,'workflow_run',?,?::jsonb,1,CASE WHEN ? = 'completed' THEN NOW() ELSE NULL END) RETURNING id",
-                Long.class, id, executionStatus, toJson(result), executionStatus
+                "INSERT INTO workspace_execution (resource_id, tenant_id, execution_type, status, result, input, " +
+                        "current_step, idempotency_key, created_by, completed_at) VALUES (?,?,'workflow_run',?,?::jsonb,?::jsonb,?,?,?," +
+                        "CASE WHEN ? = 'completed' THEN NOW() ELSE NULL END) RETURNING id",
+                Long.class, id, currentUser.tenantId(), executionStatus, toJson(result),
+                toJson(body == null ? Map.of() : body), steps.size() - 1,
+                idempotencyKey == null || idempotencyKey.isBlank() ? null : idempotencyKey,
+                currentUser.userId(), executionStatus
         );
+        jdbc.update("INSERT INTO workflow_execution_event(execution_id,event_type,payload) VALUES (?,'started',?::jsonb)",
+                executionId, toJson(result));
         Map<String, Object> response = new LinkedHashMap<>(result);
         response.put("executionId", executionId);
         response.put("startedAt", LocalDateTime.now().toString());
         return ApiResponse.ok(response);
+    }
+
+    @PostMapping("/workflow/executions/{executionId}/transition")
+    @Transactional
+    public ApiResponse<Map<String, Object>> transitionWorkflow(@PathVariable Long executionId,
+            @RequestBody Map<String, Object> body) {
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT we.id, we.status, we.result::text AS result FROM workspace_execution we " +
+                        "JOIN workspace_resource wr ON wr.id=we.resource_id WHERE we.id=? AND we.tenant_id=? AND wr.tenant_id=? FOR UPDATE",
+                executionId, currentUser.tenantId(), currentUser.tenantId());
+        if (rows.isEmpty()) return ApiResponse.error(404, "Execution not found");
+        String action = text(body.get("action"));
+        String status = switch (action) {
+            case "complete_node" -> "queued";
+            case "approve", "retry" -> "queued";
+            case "reject", "fail" -> "failed";
+            case "cancel" -> "cancelled";
+            default -> throw new IllegalArgumentException("Unsupported transition: " + action);
+        };
+        jdbc.update("UPDATE workspace_execution SET status=?, updated_at=NOW(), completed_at=" +
+                        "CASE WHEN ? IN ('failed','cancelled') THEN NOW() ELSE NULL END WHERE id=?",
+                status, status, executionId);
+        jdbc.update("INSERT INTO workflow_execution_event(execution_id,node_id,event_type,payload) VALUES (?,?,?,?::jsonb)",
+                executionId, text(body.get("nodeId")), action, toJson(body));
+        return ApiResponse.ok(Map.of("executionId", executionId, "status", status));
     }
 
     @GetMapping("/workflow/{id}/executions")
@@ -163,6 +206,13 @@ public class WorkspaceResourceController {
             normalized.put("result", parseJson(row.get("result")));
             return normalized;
         }).toList());
+    }
+
+    private Map<String, Object> normalizeExecution(Map<String, Object> row) {
+        Map<String, Object> normalized = new LinkedHashMap<>(row);
+        normalized.put("result", parseJson(row.get("result")));
+        normalized.put("executionId", row.get("id"));
+        return normalized;
     }
 
     @PostMapping("/guardrail/test")

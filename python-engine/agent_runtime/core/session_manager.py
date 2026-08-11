@@ -1,39 +1,51 @@
-"""
-会话管理器 — 管理多轮对话上下文
-Phase 1: 内存存储，后续接入 Redis
-"""
-import logging
+"""Redis-backed, tenant-isolated conversation state."""
+import json
+import os
+from datetime import datetime, timezone
 from typing import Any, Dict
 
-log = logging.getLogger(__name__)
+from redis.asyncio import Redis
 
 
 class SessionManager:
-    """会话管理器（Phase 1: 内存存储）"""
+    def __init__(self, redis_client: Redis | None = None):
+        self._redis = redis_client or Redis.from_url(
+            os.getenv("REDIS_URL", "redis://localhost:6380/0"), decode_responses=True
+        )
+        self._ttl = int(os.getenv("SESSION_TTL_SECONDS", "86400"))
+        self._max_messages = int(os.getenv("SESSION_MAX_MESSAGES", "100"))
 
-    def __init__(self):
-        self._sessions: Dict[str, Dict[str, Any]] = {}
+    @staticmethod
+    def _key(tenant_id: str, session_id: str) -> str:
+        if not tenant_id or not session_id:
+            raise ValueError("tenant_id and session_id are required")
+        return f"agenthub:session:{tenant_id}:{session_id}"
 
-    async def get_or_create(self, session_id: str) -> Dict[str, Any]:
-        """获取或创建会话"""
-        if session_id not in self._sessions:
-            self._sessions[session_id] = {
-                "session_id": session_id,
-                "messages": [],
-                "created_at": None,
-            }
-            log.info(f"创建新会话: {session_id}")
-        return self._sessions[session_id]
+    async def get_or_create(self, session_id: str, tenant_id: str = "0") -> Dict[str, Any]:
+        key = self._key(tenant_id, session_id)
+        raw = await self._redis.get(key)
+        if raw:
+            await self._redis.expire(key, self._ttl)
+            return json.loads(raw)
+        return {"session_id": session_id, "tenant_id": tenant_id, "messages": [],
+                "created_at": datetime.now(timezone.utc).isoformat()}
 
-    async def save(self, session_id: str, data: Dict[str, Any]):
-        """保存会话"""
-        self._sessions[session_id] = data
+    async def save(self, session_id: str, data: Dict[str, Any], tenant_id: str = "0"):
+        data["tenant_id"] = tenant_id
+        data["messages"] = data.get("messages", [])[-self._max_messages:]
+        key = self._key(tenant_id, session_id)
+        async with self._redis.pipeline(transaction=True) as pipe:
+            pipe.set(key, json.dumps(data, ensure_ascii=False), ex=self._ttl)
+            pipe.sadd(f"agenthub:sessions:{tenant_id}", session_id)
+            pipe.expire(f"agenthub:sessions:{tenant_id}", self._ttl)
+            await pipe.execute()
 
-    async def delete(self, session_id: str):
-        """删除会话"""
-        self._sessions.pop(session_id, None)
-        log.info(f"会话已删除: {session_id}")
+    async def delete(self, session_id: str, tenant_id: str = "0"):
+        await self._redis.delete(self._key(tenant_id, session_id))
+        await self._redis.srem(f"agenthub:sessions:{tenant_id}", session_id)
 
-    async def list_sessions(self) -> list:
-        """列出所有会话 ID"""
-        return list(self._sessions.keys())
+    async def list_sessions(self, tenant_id: str = "0") -> list[str]:
+        return sorted(await self._redis.smembers(f"agenthub:sessions:{tenant_id}"))
+
+    async def close(self):
+        await self._redis.aclose()

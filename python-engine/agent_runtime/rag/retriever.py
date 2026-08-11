@@ -1,74 +1,75 @@
-"""检索器 — 向量相似度检索"""
-import logging
+"""PostgreSQL/pgvector-backed, tenant-isolated retrieval."""
+import os
 from typing import List, Tuple
 
-from agent_runtime.rag.embedding import embed_texts, cosine_similarity
+import psycopg2
+from pgvector.psycopg2 import register_vector
 
-log = logging.getLogger(__name__)
+from agent_runtime.rag.embedding import embed_texts
 
 
 class Retriever:
-    """知识库检索器"""
+    def __init__(self, connection_factory=None):
+        self._connection_factory = connection_factory or self._connect
 
-    def __init__(self):
-        self._store: List[dict] = []  # [{id, content, embedding}]
+    @staticmethod
+    def _connect():
+        connection = psycopg2.connect(
+            host=os.getenv("DB_HOST", "localhost"), port=int(os.getenv("DB_PORT", "5432")),
+            dbname=os.getenv("DB_NAME", "agenthub"), user=os.getenv("DB_USER", "agenthub"),
+            password=os.getenv("DB_PASSWORD", "agenthub123"),
+        )
+        register_vector(connection)
+        return connection
 
-    def index(self, doc_id: str, chunks: List[str], tenant_id: str = "0"):
-        """将文档块索引到向量存储"""
-        if not chunks:
-            return
-        self.remove(doc_id, tenant_id)
+    def index(self, doc_id: str, chunks: List[str], tenant_id: str = "0", index_version: int = 1):
         embeddings = embed_texts(chunks)
-        for i, (chunk, emb) in enumerate(zip(chunks, embeddings)):
-            self._store.append({
-                "id": f"{doc_id}_{i}",
-                "doc_id": doc_id,
-                "tenant_id": str(tenant_id),
-                "content": chunk,
-                "embedding": emb,
-            })
-        log.info(f"Indexed {len(chunks)} chunks from doc {doc_id}")
+        with self._connection_factory() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM knowledge_chunk kc USING knowledge_document kd, knowledge_base kb "
+                "WHERE kc.doc_id=kd.id AND kd.kb_id=kb.id AND kc.doc_id=%s AND kb.tenant_id=%s",
+                (doc_id, tenant_id),
+            )
+            for index, (content, embedding) in enumerate(zip(chunks, embeddings)):
+                cursor.execute(
+                    "INSERT INTO knowledge_chunk (doc_id, chunk_index, content, embedding, index_version) "
+                    "VALUES (%s,%s,%s,%s,%s)", (doc_id, index, content, embedding, index_version),
+                )
+            cursor.execute("UPDATE knowledge_document SET chunk_count=%s, status='ready' WHERE id=%s", (len(chunks), doc_id))
 
     def remove(self, doc_id: str, tenant_id: str = "0"):
-        """移除某个文档的全部内存索引。"""
-        self._store = [item for item in self._store if not (
-            item["doc_id"] == str(doc_id) and item["tenant_id"] == str(tenant_id)
-        )]
+        with self._connection_factory() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM knowledge_chunk kc USING knowledge_document kd, knowledge_base kb "
+                "WHERE kc.doc_id=kd.id AND kd.kb_id=kb.id AND kc.doc_id=%s AND kb.tenant_id=%s",
+                (doc_id, tenant_id),
+            )
 
     def search(self, query: str, top_k: int = 3, tenant_id: str = "0") -> List[Tuple[str, float]]:
-        """搜索最相关的 top_k 文本块"""
-        if not self._store:
-            return []
-
-        query_vec = embed_texts([query])[0]
-        scored = []
-        for item in self._store:
-            if item["tenant_id"] != str(tenant_id):
-                continue
-            score = cosine_similarity(query_vec, item["embedding"])
-            scored.append((item["content"], score))
-
-        scored.sort(key=lambda x: x[1], reverse=True)
-        return scored[:top_k]
+        query_vector = embed_texts([query])[0]
+        with self._connection_factory() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT kc.content, 1 - (kc.embedding <=> %s::vector) AS score "
+                "FROM knowledge_chunk kc JOIN knowledge_document kd ON kd.id=kc.doc_id "
+                "JOIN knowledge_base kb ON kb.id=kd.kb_id WHERE kb.tenant_id=%s "
+                "AND kc.embedding IS NOT NULL ORDER BY kc.embedding <=> %s::vector LIMIT %s",
+                (query_vector, tenant_id, query_vector, top_k),
+            )
+            return [(content, float(score)) for content, score in cursor.fetchall()]
 
     def get_context(self, query: str, top_k: int = 3, tenant_id: str = "0") -> str:
-        """获取检索上下文（直接注入 LLM）"""
-        results = self.search(query, top_k, tenant_id)
-        if not results:
-            return ""
-
-        context_parts = []
-        for i, (content, score) in enumerate(results):
-            if score > 0.1:
-                context_parts.append(f"[Document {i+1}] (relevance: {score:.2f})\n{content}")
-
-        return "\n\n".join(context_parts)
+        return "\n\n".join(
+            f"[Document {index}] (relevance: {score:.2f})\n{content}"
+            for index, (content, score) in enumerate(self.search(query, top_k, tenant_id), 1) if score > 0.1
+        )
 
     def stats(self, tenant_id: str | None = None) -> dict:
-        items = self._store if tenant_id is None else [
-            item for item in self._store if item["tenant_id"] == str(tenant_id)
-        ]
-        return {
-            "total_chunks": len(items),
-            "documents": len({item["doc_id"] for item in items}),
-        }
+        with self._connection_factory() as connection, connection.cursor() as cursor:
+            where = "WHERE kb.tenant_id=%s" if tenant_id is not None else ""
+            cursor.execute(
+                "SELECT COUNT(kc.id), COUNT(DISTINCT kc.doc_id) FROM knowledge_chunk kc "
+                "JOIN knowledge_document kd ON kd.id=kc.doc_id JOIN knowledge_base kb ON kb.id=kd.kb_id " + where,
+                (tenant_id,) if tenant_id is not None else (),
+            )
+            chunks, documents = cursor.fetchone()
+            return {"total_chunks": chunks, "documents": documents}

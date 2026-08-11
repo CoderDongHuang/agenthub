@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 # 配置中转: export OPENAI_BASE_URL=https://your-proxy.com/v1
 # ⚠️ Anthropic 不走 ChatOpenAI，见 _create_model 分支
 # ═══════════════════════════════════════════════════════════════
-MODEL_CONFIG: Dict[str, tuple] = {
+_LEGACY_MODEL_CONFIG: Dict[str, tuple] = {
     # ── OpenAI ──
     "gpt-4o":              ("openai",     "OPENAI_API_KEY",         None),       # 🧠 推理
     "gpt-4o-mini":         ("openai",     "OPENAI_API_KEY",         None),       # ⚡ 速度
@@ -77,6 +77,24 @@ MODEL_CONFIG: Dict[str, tuple] = {
     "minimax-abab6.5s":    ("minimax",    "MINIMAX_API_KEY",       "https://api.minimax.chat/v1"),  # ⚡ 速度
 }
 
+# Stable public API identifiers. This registry is the single source used by
+# runtime validation and the management UI capability endpoint.
+MODEL_CATALOG = [
+    {"id": "gpt-4o", "provider": "openai", "key_env": "OPENAI_API_KEY", "base_url": None, "context_window": 128000, "streaming": True, "tools": True},
+    {"id": "gpt-4o-mini", "provider": "openai", "key_env": "OPENAI_API_KEY", "base_url": None, "context_window": 128000, "streaming": True, "tools": True},
+    {"id": "claude-sonnet-4-5", "provider": "anthropic", "key_env": "ANTHROPIC_API_KEY", "base_url": None, "context_window": 200000, "streaming": True, "tools": True},
+    {"id": "deepseek-chat", "provider": "deepseek", "key_env": "DEEPSEEK_API_KEY", "base_url": "https://api.deepseek.com/v1", "context_window": 128000, "streaming": True, "tools": True},
+    {"id": "deepseek-reasoner", "provider": "deepseek", "key_env": "DEEPSEEK_API_KEY", "base_url": "https://api.deepseek.com/v1", "context_window": 128000, "streaming": True, "tools": False},
+    {"id": "qwen-plus", "provider": "qwen", "key_env": "DASHSCOPE_API_KEY", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "context_window": 131072, "streaming": True, "tools": True},
+    {"id": "qwen-turbo", "provider": "qwen", "key_env": "DASHSCOPE_API_KEY", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "context_window": 1000000, "streaming": True, "tools": True},
+    {"id": "moonshot-v1-32k", "provider": "moonshot", "key_env": "MOONSHOT_API_KEY", "base_url": "https://api.moonshot.cn/v1", "context_window": 32000, "streaming": True, "tools": True},
+    {"id": "glm-4-plus", "provider": "zhipu", "key_env": "ZHIPU_API_KEY", "base_url": "https://open.bigmodel.cn/api/paas/v4", "context_window": 128000, "streaming": True, "tools": True},
+    {"id": "mistral-large-latest", "provider": "mistral", "key_env": "MISTRAL_API_KEY", "base_url": "https://api.mistral.ai/v1", "context_window": 128000, "streaming": True, "tools": True},
+]
+MODEL_CONFIG: Dict[str, tuple] = {
+    item["id"]: (item["provider"], item["key_env"], item["base_url"]) for item in MODEL_CATALOG
+}
+
 
 def get_api_key(provider: str) -> str | None:
     """获取指定 provider 的 API Key"""
@@ -131,6 +149,7 @@ def get_provider_status() -> dict:
         "provider_count": len(provider_list),
         "configured_provider_count": sum(1 for item in provider_list if item["configured"]),
         "model_count": len(MODEL_CONFIG),
+        "models": [{**item, "configured": bool(os.getenv(item["key_env"]))} for item in MODEL_CATALOG],
     }
 
 
@@ -151,10 +170,8 @@ class LLMClient:
         """根据模型名创建对应实例"""
         config = MODEL_CONFIG.get(model_name)
         if not config:
-            log.warning(f"Unknown model: {model_name}, fallback to OpenAI default")
-            provider, key_env, base_url = "openai", "OPENAI_API_KEY", None
-        else:
-            provider, key_env, base_url = config
+            raise ValueError(f"Unsupported model: {model_name}")
+        provider, key_env, base_url = config
 
         api_key = get_api_key(provider)
 

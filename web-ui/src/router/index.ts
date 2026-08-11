@@ -4,6 +4,8 @@ import { useAuthStore } from '../stores/auth'
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    ...['dashboard', 'agents', 'users', 'approvals', 'audit', 'tools', 'knowledge', 'workflows', 'guardrails', 'analytics', 'channels']
+      .map(path => ({ path: `/${path}`, redirect: `/console/${path}` })),
     // 首页（公开）
     {
       path: '/',
@@ -148,9 +150,10 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const authStore = useAuthStore()
   if (to.meta.public) return true
+  if (!authStore.isLoggedIn) await authStore.restoreSession()
   if (!authStore.isLoggedIn) return '/login'
   return true
 })

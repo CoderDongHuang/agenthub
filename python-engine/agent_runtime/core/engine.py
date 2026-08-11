@@ -68,7 +68,7 @@ class AgentEngine:
 
         try:
             # 1. 获取会话上下文
-            session = await self.session_manager.get_or_create(session_id)
+            session = await self.session_manager.get_or_create(session_id, request.tenant_id)
             history = session.get("messages", [])
 
             # 2. 加载 Agent 配置（Phase 1: 使用硬编码配置，后续从 Java 获取）
@@ -98,7 +98,7 @@ class AgentEngine:
                 history.append({"role": "user", "content": user_message})
                 history.append({"role": "assistant", "content": demo_reply})
                 session["messages"] = history[-100:]
-                await self.session_manager.save(session_id, session)
+                await self.session_manager.save(session_id, session, request.tenant_id)
 
                 yield self._make_response(agent_hub_pb2.ExecutionResponse.COMPLETE, content="")
                 return
@@ -241,7 +241,7 @@ class AgentEngine:
             if full_text:
                 history.append({"role": "assistant", "content": full_text})
             session["messages"] = history[-100:]  # 保留最近 100 条
-            await self.session_manager.save(session_id, session)
+            await self.session_manager.save(session_id, session, request.tenant_id)
 
             # 7. 完成
             yield self._make_response(agent_hub_pb2.ExecutionResponse.COMPLETE, content="")
@@ -256,7 +256,7 @@ class AgentEngine:
         """
         default_config = {
             "name": f"Agent {agent_id}",
-            "model": "deepseek-v4-flash",
+            "model": "deepseek-chat",
             "system_prompt": "你是一个有用的 AI 助手。你可以使用提供的工具来帮助用户。",
             "temperature": 0.7,
             "max_tokens": 4096,

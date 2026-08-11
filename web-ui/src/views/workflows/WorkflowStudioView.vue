@@ -83,11 +83,19 @@ async function runFlow() {
     await save()
     const response = await api.post(`/workspace/workflow/${workflow.value.id}/run`) as any
     if (response.code !== 200) throw new Error(response.message)
-    const completedIds = new Set((response.data?.steps || []).map((step: any) => Number(step.nodeId)))
+    const completedIds = new Set((response.data?.steps || [])
+      .filter((step: any) => step.status === 'completed').map((step: any) => Number(step.nodeId)))
     activeStep.value = nodes.value.filter(node => completedIds.has(node.id)).length
     await loadExecutions()
-    const status = response.data?.status === 'waiting_for_approval' ? '已运行到人工审批节点' : '流程执行完成'
-    ElMessage.success(status)
+    const statusMessages: Record<string, string> = {
+      completed: '流程执行完成',
+      waiting_for_approval: '流程正在等待人工审批',
+      queued: '节点已进入执行队列',
+      failed: '流程因无效节点停止',
+    }
+    const executionStatus = response.data?.status || 'queued'
+    const message = statusMessages[executionStatus] || `流程状态：${executionStatus}`
+    executionStatus === 'failed' ? ElMessage.error(message) : ElMessage.success(message)
   } catch (error: any) {
     ElMessage.error(error?.message || '流程运行失败')
   } finally {

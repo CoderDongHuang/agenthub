@@ -16,6 +16,7 @@ import com.agenthub.user.entity.User;
 import com.agenthub.user.repository.UserRepository;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -71,6 +72,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String bearerToken = request.getHeader("Authorization");
         if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
             return bearerToken.substring(7);
+        }
+        if (request.getCookies() != null) {
+            return Arrays.stream(request.getCookies())
+                    .filter(cookie -> "AGENTHUB_SESSION".equals(cookie.getName()))
+                    .map(jakarta.servlet.http.Cookie::getValue)
+                    .filter(StringUtils::hasText)
+                    .findFirst().orElse(null);
         }
         return null;
     }

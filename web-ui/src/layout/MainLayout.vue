@@ -51,7 +51,7 @@ function isActive(path: string) {
   return route.path === path || (path === '/console/agents' && route.path.startsWith('/console/agents/'))
 }
 function navigate(path: string) { mobileOpen.value = false; router.push(path) }
-function logout() { authStore.logout(); router.push('/login') }
+async function logout() { await authStore.logout(); router.push('/login') }
 async function refreshShellStatus() {
   try {
     const response = await api.get('/platform/overview') as any

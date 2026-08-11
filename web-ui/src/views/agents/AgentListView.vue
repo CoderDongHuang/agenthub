@@ -52,7 +52,7 @@ const filteredAgents = computed(() => agents.value.filter((agent) => {
   return matchesStatus && matchesKeyword
 }))
 
-const modelOptions = [
+const modelOptions = ref<Array<{ label: string; value: string }>>([
   // OpenAI
   { label: 'GPT-4o (🧠推理)', value: 'gpt-4o' },
   { label: 'GPT-4o-mini (⚡速度)', value: 'gpt-4o-mini' },
@@ -89,7 +89,20 @@ const modelOptions = [
   // MiniMax
   { label: 'MiniMax-Text-01 (🧠推理)', value: 'minimax-text-01' },
   { label: 'MiniMax-abab6.5s (⚡速度)', value: 'minimax-abab6.5s' },
-]
+])
+
+const fetchModels = async () => {
+  try {
+    const response = await api.get('/platform/overview') as any
+    const models = response.data?.runtime?.models?.models || []
+    if (models.length) {
+      modelOptions.value = models.map((model: any) => ({
+        label: `${model.id} (${model.provider}${model.configured ? '' : ' - not configured'})`,
+        value: model.id,
+      }))
+    }
+  } catch { /* Keep the bundled last-known-good catalog while runtime is offline. */ }
+}
 
 const statusTagType = (status: string) => {
   const map: Record<string, string> = { draft: 'info', published: 'success', disabled: 'danger' }
@@ -188,7 +201,7 @@ const goDetail = (row: Agent) => {
   router.push(`/console/agents/${row.id}`)
 }
 
-onMounted(fetchAgents)
+onMounted(() => Promise.all([fetchAgents(), fetchModels()]))
 </script>
 
 <template>

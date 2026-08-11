@@ -11,31 +11,32 @@ interface UserInfo {
 }
 
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref(localStorage.getItem('token') || '')
+  const authenticated = ref(false)
   const user = ref<UserInfo | null>(null)
 
-  const isLoggedIn = computed(() => !!token.value)
+  const isLoggedIn = computed(() => authenticated.value)
   const isAdmin = computed(() => user.value?.roles?.includes('admin') ?? false)
 
   async function login(username: string, password: string) {
+    await api.get('/auth/csrf')
     const res = await api.post('/auth/login', { username, password }) as any
     const data = res.data
-    token.value = data.token
+    authenticated.value = true
     user.value = {
       userId: data.userId,
       username: data.username,
       displayName: data.displayName,
       roles: data.roles,
     }
-    localStorage.setItem('token', data.token)
     return data
   }
 
   async function restoreSession() {
-    if (!token.value || user.value) return user.value
+    if (user.value) return user.value
     try {
       const response = await api.get('/auth/me') as any
       user.value = response.data
+      authenticated.value = true
       return user.value
     } catch {
       logout()
@@ -43,11 +44,11 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  function logout() {
-    token.value = ''
+  async function logout() {
+    try { await api.post('/auth/logout') } catch { /* Clear local state even if the session expired. */ }
+    authenticated.value = false
     user.value = null
-    localStorage.removeItem('token')
   }
 
-  return { token, user, isLoggedIn, isAdmin, login, restoreSession, logout }
+  return { user, isLoggedIn, isAdmin, login, restoreSession, logout }
 })

@@ -10,6 +10,11 @@ import com.agenthub.user.service.UserService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.security.core.Authentication;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.security.web.csrf.CsrfToken;
 
 import java.util.List;
 import java.util.Map;
@@ -20,16 +25,38 @@ public class AuthController {
 
     private final AuthService authService;
     private final UserService userService;
+    private final boolean secureCookie;
 
-    public AuthController(AuthService authService, UserService userService) {
+    public AuthController(AuthService authService, UserService userService,
+                          @Value("${agenthub.auth.secure-cookie:false}") boolean secureCookie) {
         this.authService = authService;
         this.userService = userService;
+        this.secureCookie = secureCookie;
     }
 
     @PostMapping("/login")
-    public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
+    public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request, HttpServletResponse response) {
         LoginResponse result = authService.login(request);
+        response.addHeader(HttpHeaders.SET_COOKIE, sessionCookie(result.getToken(), 3600).toString());
+        result.setToken(null);
         return ApiResponse.ok(result);
+    }
+
+    @GetMapping("/csrf")
+    public ApiResponse<Map<String, String>> csrf(CsrfToken token) {
+        return ApiResponse.ok(Map.of("token", token.getToken(), "headerName", token.getHeaderName()));
+    }
+
+    @PostMapping("/logout")
+    public ApiResponse<String> logout(HttpServletResponse response) {
+        response.addHeader(HttpHeaders.SET_COOKIE, sessionCookie("", 0).toString());
+        return ApiResponse.ok("Logged out");
+    }
+
+    private ResponseCookie sessionCookie(String value, long maxAge) {
+        return ResponseCookie.from("AGENTHUB_SESSION", value)
+                .httpOnly(true).secure(secureCookie).sameSite("Strict")
+                .path("/").maxAge(maxAge).build();
     }
 
     @PostMapping("/register")

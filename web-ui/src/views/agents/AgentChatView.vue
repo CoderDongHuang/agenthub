@@ -94,7 +94,8 @@ async function sendMessage() {
   try {
     const response = await fetch(`${apiBaseUrl}/agents/${agentId}/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ message: text, sessionId: sessionId.value, userId: '1' }),
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)

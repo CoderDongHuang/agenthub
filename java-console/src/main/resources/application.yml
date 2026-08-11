@@ -53,6 +53,8 @@ python:
 
 agenthub:
   internal-token: ${AGENTHUB_INTERNAL_TOKEN}
+  auth:
+    secure-cookie: ${AGENTHUB_SECURE_COOKIE:false}
   cors:
     allowed-origins: ${AGENTHUB_CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
 
