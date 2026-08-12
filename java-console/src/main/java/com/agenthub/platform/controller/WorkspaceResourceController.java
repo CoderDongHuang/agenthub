@@ -10,6 +10,9 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestClient;
 import com.agenthub.security.CurrentUser;
 import com.agenthub.platform.service.WebhookUrlValidator;
+import com.agenthub.platform.dto.WorkspaceResourceRequest;
+import jakarta.validation.Valid;
+import org.springframework.data.domain.Pageable;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -36,13 +39,13 @@ public class WorkspaceResourceController {
     }
 
     @GetMapping("/{type}")
-    public ApiResponse<List<Map<String, Object>>> list(@PathVariable String type) {
+    public ApiResponse<List<Map<String, Object>>> list(@PathVariable String type, Pageable pageable) {
         validateType(type);
         List<Map<String, Object>> rows = jdbc.queryForList(
                 "SELECT id, resource_type, resource_key, name, description, config::text AS config, status, " +
                         "created_at, updated_at FROM workspace_resource WHERE tenant_id = ? AND resource_type = ? " +
-                        "ORDER BY updated_at DESC, id",
-                currentUser.tenantId(), type
+                        "ORDER BY updated_at DESC, id LIMIT ? OFFSET ?",
+                currentUser.tenantId(), type, pageable.getPageSize(), pageable.getOffset()
         );
         return ApiResponse.ok(rows.stream().map(this::normalize).toList());
     }
@@ -50,13 +53,13 @@ public class WorkspaceResourceController {
     @PostMapping("/{type}")
     public ApiResponse<Map<String, Object>> create(
             @PathVariable String type,
-            @RequestBody Map<String, Object> body) {
+            @Valid @RequestBody WorkspaceResourceRequest request) {
         validateType(type);
-        String key = text(body.getOrDefault("key", type + "-" + UUID.randomUUID()));
-        String name = text(body.getOrDefault("name", "Untitled"));
-        String description = text(body.getOrDefault("description", ""));
-        String status = text(body.getOrDefault("status", "draft"));
-        String config = toJson(body.getOrDefault("config", Map.of()));
+        String key = type + "-" + UUID.randomUUID();
+        String name = text(request.name());
+        String description = text(request.description());
+        String status = text(request.status() == null ? "draft" : request.status());
+        String config = toJson(request.config() == null ? Map.of() : request.config());
         Long id = jdbc.queryForObject(
                 "INSERT INTO workspace_resource (tenant_id, resource_type, resource_key, name, description, config, status, created_by) " +
                         "VALUES (?,?,?,?,?,?::jsonb,?,?) RETURNING id",
@@ -300,7 +303,7 @@ public class WorkspaceResourceController {
             ResponseEntity<Void> response = restClient.post().uri(safeWebhookUri).body(payload).retrieve().toBodilessEntity();
             return ApiResponse.ok(Map.of("channel", type, "status", "delivered", "httpStatus", response.getStatusCode().value()));
         } catch (Exception exception) {
-            return ApiResponse.error(502, "Channel delivery failed: " + exception.getMessage());
+            return ApiResponse.error(502, "Channel delivery failed");
         }
     }
 

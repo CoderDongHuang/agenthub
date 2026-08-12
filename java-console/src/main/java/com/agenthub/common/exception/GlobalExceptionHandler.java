@@ -11,25 +11,25 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
-
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-    public ApiResponse<Void> handleException(Exception e) {
-        log.error("未捕获的异常", e);
-        return ApiResponse.error("服务器内部错误: " + e.getMessage());
+    public ApiResponse<Void> handleException(Exception exception) {
+        log.error("Unhandled exception", exception);
+        return ApiResponse.error(500, "Internal server error");
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public ApiResponse<Void> handleIllegalArgument(IllegalArgumentException e) {
-        return ApiResponse.error(400, e.getMessage());
+    public ApiResponse<Void> handleIllegalArgument(IllegalArgumentException exception) {
+        log.debug("Invalid request", exception);
+        return ApiResponse.error(400, "Invalid request");
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     @ResponseStatus(HttpStatus.PAYLOAD_TOO_LARGE)
-    public ApiResponse<Void> handleMaxUploadSize(MaxUploadSizeExceededException e) {
-        return ApiResponse.error(413, "文件不能超过 25 MB");
+    public ApiResponse<Void> handleMaxUploadSize(MaxUploadSizeExceededException exception) {
+        return ApiResponse.error(413, "File exceeds the 25 MB limit");
     }
 }

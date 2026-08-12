@@ -2,6 +2,14 @@
 
 企业级 AI Agent 中台首个公开版本。业务人员 3 分钟创建 Agent，IT 统一管控，合规可审计。
 
+## 控制台与运行态势更新
+
+- 新增 Java `GET /api/platform/overview` 聚合接口
+- 新增 Python `GET /runtime/capabilities` 安全能力快照
+- 新增 JWT 会话恢复接口 `GET /api/auth/me`
+- 重构公开官网、登录注册和全部控制台工作页面
+- Agent 详情、对话、知识索引、审批决策和审计追踪采用独立工作流布局
+
 ---
 
 ## 核心能力

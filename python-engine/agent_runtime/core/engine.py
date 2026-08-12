@@ -84,7 +84,8 @@ class AgentEngine:
             tool_policy_context = "\n".join(tool_policy_lines) if tool_policy_lines else "- 当前没有可用工具"
 
             # Demo 模式：没有 API Key 时用本地模拟，保证端到端流程可跑
-            if not has_any_api_key():
+            demo_mode = os.getenv("AGENTHUB_DEMO_MODE", "false").lower() == "true"
+            if not has_any_api_key() and demo_mode:
                 log.warning("No LLM API Key found, using Demo mode")
                 demo_reply = (
                     f"[Demo Mode] Received: {user_message}\n\n"
@@ -102,6 +103,8 @@ class AgentEngine:
 
                 yield self._make_response(agent_hub_pb2.ExecutionResponse.COMPLETE, content="")
                 return
+            if not has_any_api_key():
+                raise RuntimeError("No model provider credentials configured")
 
             llm = self.llm_client.get_model(
                 model_name=agent_config["model"],

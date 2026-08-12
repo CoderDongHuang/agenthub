@@ -110,6 +110,9 @@ app = FastAPI(
     description="企业级 AI Agent 中台的 Agent 运行时引擎",
     version="0.1.0",
 )
+DEMO_MODE = os.getenv("AGENTHUB_DEMO_MODE", "false").lower() == "true"
+if os.getenv("APP_ENV", "development").lower() in ("production", "prod") and DEMO_MODE:
+    raise RuntimeError("AGENTHUB_DEMO_MODE must be disabled in production")
 
 configured_origins = [
     origin.strip()
