@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestClient;
 import org.w3c.dom.Document;
@@ -56,7 +57,7 @@ public class ChannelCallbackController {
         this.dingSecret=dingSecret; this.dingWebhook=dingWebhook;
     }
 
-    @GetMapping("/feishu/callback") public Map<String,String> feishuVerify(@RequestParam(required=false) String challenge) { return Map.of("challenge", challenge==null?"":challenge); }
+    @GetMapping("/feishu/callback") public ResponseEntity<Map<String,String>> feishuVerify(@RequestParam(required=false) String challenge) { return ResponseEntity.ok(Map.of("challenge", challenge==null?"":challenge)); }
     @PostMapping(value="/feishu/callback", consumes=MediaType.APPLICATION_JSON_VALUE)
     public Map<String,String> feishu(@RequestHeader Map<String,String> headers, @RequestBody String body) throws Exception {
         String raw=body;
@@ -71,14 +72,20 @@ public class ChannelCallbackController {
                 throw ex;
             }
         }
-        if (root.has("challenge")) return Map.of("challenge",root.path("challenge").asText());
+        if (root.has("challenge")) {
+            String token = root.path("token").asText("");
+            if (!feishuToken.isBlank() && !MessageDigest.isEqual(feishuToken.getBytes(StandardCharsets.UTF_8), token.getBytes(StandardCharsets.UTF_8))) throw new SecurityException("invalid feishu verification token");
+            return Map.of("challenge",root.path("challenge").asText());
+        }
         String text=root.at("/event/message/content").asText(""); String user=root.at("/event/sender/sender_id/open_id").asText("feishu-user");
         String reply=dispatch("feishu",user,text); if(!reply.isBlank()) sendFeishu(user,reply); return Map.of("status","accepted");
     }
 
-    @GetMapping("/wechat/callback") public String wechatVerify(@RequestParam Map<String,String> q) throws Exception {
-        String echo=q.getOrDefault("echostr",""); if(!echo.isBlank() && q.containsKey("msg_signature") && !verifyWechat(q.get("msg_signature"),q.get("timestamp"),q.get("nonce"),echo)) throw new SecurityException("invalid wechat signature");
-        return wechatAesKey.isBlank()?echo:decryptWechat(echo);
+    @GetMapping("/wechat/callback") public ResponseEntity<String> wechatVerify(@RequestParam Map<String,String> q) throws Exception {
+        String echo=q.getOrDefault("echostr","");
+        if (echo.isBlank() || !q.containsKey("msg_signature") || !q.containsKey("timestamp") || !q.containsKey("nonce")) return ResponseEntity.badRequest().body("");
+        if(!verifyWechat(q.get("msg_signature"),q.get("timestamp"),q.get("nonce"),echo)) throw new SecurityException("invalid wechat signature");
+        return ResponseEntity.ok().contentType(MediaType.TEXT_PLAIN).body(decryptWechat(echo));
     }
     @PostMapping(value="/wechat/callback", consumes={MediaType.TEXT_XML_VALUE,MediaType.APPLICATION_XML_VALUE})
     public String wechat(@RequestParam Map<String,String> q,@RequestBody String body) throws Exception {
@@ -107,7 +114,17 @@ public class ChannelCallbackController {
         if (n < 0 || 20+n > p.length) throw new SecurityException("invalid feishu payload length");
         return new String(p,20,n,StandardCharsets.UTF_8);
     }
-    private String decryptWechat(String s) throws Exception { byte[] key=Base64.getDecoder().decode(wechatAesKey+"="); Cipher c=Cipher.getInstance("AES/CBC/NoPadding"); c.init(Cipher.DECRYPT_MODE,new SecretKeySpec(key,"AES"),new IvParameterSpec(Arrays.copyOf(key,16))); byte[] p=c.doFinal(Base64.getDecoder().decode(s)); int n=((p[16]&255)<<24)|((p[17]&255)<<16)|((p[18]&255)<<8)|(p[19]&255); return new String(p,20,n,StandardCharsets.UTF_8); }
+    private String decryptWechat(String s) throws Exception {
+        byte[] key=Base64.getDecoder().decode(wechatAesKey + "=".repeat((4 - wechatAesKey.length() % 4) % 4));
+        Cipher c=Cipher.getInstance("AES/CBC/NoPadding"); c.init(Cipher.DECRYPT_MODE,new SecretKeySpec(key,"AES"),new IvParameterSpec(Arrays.copyOf(key,16)));
+        byte[] p=c.doFinal(Base64.getDecoder().decode(s));
+        if (p.length < 20) throw new SecurityException("invalid wechat encrypted payload");
+        int n=((p[16]&255)<<24)|((p[17]&255)<<16)|((p[18]&255)<<8)|(p[19]&255);
+        if (n < 0 || 20+n > p.length) throw new SecurityException("invalid wechat payload length");
+        String corp = new String(p,20+n,p.length-20-n,StandardCharsets.UTF_8).replaceAll("\\u0000+$", "");
+        if (!wechatCorpId.isBlank() && !corp.isBlank() && !wechatCorpId.equals(corp)) throw new SecurityException("invalid wechat corp id");
+        return new String(p,20,n,StandardCharsets.UTF_8);
+    }
     private String decrypt(String s,byte[] key,byte[] iv,int skip) throws Exception { Cipher c=Cipher.getInstance("AES/CBC/PKCS5Padding"); c.init(Cipher.DECRYPT_MODE,new SecretKeySpec(key,"AES"),new IvParameterSpec(iv)); byte[] p=c.doFinal(Base64.getDecoder().decode(s)); return new String(p,skip,p.length-skip,StandardCharsets.UTF_8); }
     private byte[] decryptBytes(String s,byte[] key,byte[] iv) throws Exception { Cipher c=Cipher.getInstance("AES/CBC/PKCS5Padding"); c.init(Cipher.DECRYPT_MODE,new SecretKeySpec(key,"AES"),new IvParameterSpec(iv)); return c.doFinal(Base64.getDecoder().decode(s)); }
     private void sendDing(String text){if(!dingWebhook.isBlank()) http.post().uri(dingWebhook).contentType(MediaType.APPLICATION_JSON).body(Map.of("msgtype","text","text",Map.of("content",text))).retrieve().toBodilessEntity();}
