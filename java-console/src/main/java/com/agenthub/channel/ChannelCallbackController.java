@@ -23,10 +23,13 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RestController
 @RequestMapping("/api/channel")
 public class ChannelCallbackController {
+    private static final Logger log = LoggerFactory.getLogger(ChannelCallbackController.class);
     private final ObjectMapper mapper;
     private final PythonAgentClient runtime;
     private final String defaultAgentId;
@@ -59,7 +62,15 @@ public class ChannelCallbackController {
         String raw=body;
         if (headers.containsKey("x-lark-signature") && !verifyFeishu(headers, raw)) throw new SecurityException("invalid feishu signature");
         JsonNode root=mapper.readTree(raw);
-        if (root.has("encrypt")) root=mapper.readTree(decryptFeishu(root.path("encrypt").asText()));
+        if (root.has("encrypt")) {
+            String encrypted = root.path("encrypt").asText("");
+            try {
+                root = mapper.readTree(decryptFeishu(encrypted));
+            } catch (Exception ex) {
+                log.warn("Feishu encrypted event decrypt failed: payloadLength={}, encryptKeyConfigured={}", encrypted.length(), !feishuEncryptKey.isBlank(), ex);
+                throw ex;
+            }
+        }
         if (root.has("challenge")) return Map.of("challenge",root.path("challenge").asText());
         String text=root.at("/event/message/content").asText(""); String user=root.at("/event/sender/sender_id/open_id").asText("feishu-user");
         String reply=dispatch("feishu",user,text); if(!reply.isBlank()) sendFeishu(user,reply); return Map.of("status","accepted");
@@ -85,9 +96,20 @@ public class ChannelCallbackController {
     private boolean verifyFeishu(Map<String,String> h,String body) throws Exception { String s=h.get("x-lark-request-timestamp")+h.get("x-lark-request-nonce")+feishuEncryptKey+body; return MessageDigest.isEqual(hex(MessageDigest.getInstance("SHA-256").digest(s.getBytes(StandardCharsets.UTF_8))).getBytes(),h.get("x-lark-signature").getBytes()); }
     private boolean verifyDing(String ts,String sign) throws Exception { String v=Base64.getEncoder().encodeToString(hmac(dingSecret,(ts+"\n"+dingSecret).getBytes(StandardCharsets.UTF_8),"HmacSHA256")); return MessageDigest.isEqual(v.getBytes(),sign.getBytes()); }
     private boolean verifyWechat(String sig,String ts,String nonce,String echo) throws Exception { String[] a={wechatToken,ts,nonce,echo}; Arrays.sort(a); return sha1(String.join("",a)).equalsIgnoreCase(sig); }
-    private String decryptFeishu(String s) throws Exception { byte[] key=MessageDigest.getInstance("SHA-256").digest(feishuEncryptKey.getBytes(StandardCharsets.UTF_8)); return decrypt(s,key,Arrays.copyOf(key,16),0); }
+    private String decryptFeishu(String s) throws Exception {
+        byte[] key=MessageDigest.getInstance("SHA-256").digest(feishuEncryptKey.getBytes(StandardCharsets.UTF_8));
+        byte[] p=decryptBytes(s,key,Arrays.copyOf(key,16));
+        if (p.length < 20) throw new SecurityException("invalid feishu encrypted payload");
+        // Feishu encrypted events use a 16-byte random prefix followed by JSON.
+        // Some SDKs emit the same prefix plus a 4-byte length field; accept both.
+        if (p[16] == '{' || p[16] == '[') return new String(p,16,p.length-16,StandardCharsets.UTF_8);
+        int n=((p[16]&255)<<24)|((p[17]&255)<<16)|((p[18]&255)<<8)|(p[19]&255);
+        if (n < 0 || 20+n > p.length) throw new SecurityException("invalid feishu payload length");
+        return new String(p,20,n,StandardCharsets.UTF_8);
+    }
     private String decryptWechat(String s) throws Exception { byte[] key=Base64.getDecoder().decode(wechatAesKey+"="); Cipher c=Cipher.getInstance("AES/CBC/NoPadding"); c.init(Cipher.DECRYPT_MODE,new SecretKeySpec(key,"AES"),new IvParameterSpec(Arrays.copyOf(key,16))); byte[] p=c.doFinal(Base64.getDecoder().decode(s)); int n=((p[16]&255)<<24)|((p[17]&255)<<16)|((p[18]&255)<<8)|(p[19]&255); return new String(p,20,n,StandardCharsets.UTF_8); }
     private String decrypt(String s,byte[] key,byte[] iv,int skip) throws Exception { Cipher c=Cipher.getInstance("AES/CBC/PKCS5Padding"); c.init(Cipher.DECRYPT_MODE,new SecretKeySpec(key,"AES"),new IvParameterSpec(iv)); byte[] p=c.doFinal(Base64.getDecoder().decode(s)); return new String(p,skip,p.length-skip,StandardCharsets.UTF_8); }
+    private byte[] decryptBytes(String s,byte[] key,byte[] iv) throws Exception { Cipher c=Cipher.getInstance("AES/CBC/PKCS5Padding"); c.init(Cipher.DECRYPT_MODE,new SecretKeySpec(key,"AES"),new IvParameterSpec(iv)); return c.doFinal(Base64.getDecoder().decode(s)); }
     private void sendDing(String text){if(!dingWebhook.isBlank()) http.post().uri(dingWebhook).contentType(MediaType.APPLICATION_JSON).body(Map.of("msgtype","text","text",Map.of("content",text))).retrieve().toBodilessEntity();}
     private void sendFeishu(String user,String text){
         if(feishuAppId.isBlank()||feishuAppSecret.isBlank()) return;
