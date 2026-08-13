@@ -4,13 +4,11 @@ server:
 spring:
   application:
     name: ai-agent-hub-java-console
-
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:agenthub}
     username: ${DB_USER:agenthub}
     password: ${DB_PASSWORD:agenthub123}
     driver-class-name: org.postgresql.Driver
-
   jpa:
     hibernate:
       ddl-auto: validate
@@ -19,36 +17,31 @@ spring:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
-
   flyway:
     enabled: true
     locations: classpath:db/migration
-
   servlet:
     multipart:
       max-file-size: 25MB
       max-request-size: 26MB
-
   data:
     redis:
       url: ${REDIS_URL:redis://:123456@localhost:6380/0}
-
   security:
     jwt:
       secret: ${JWT_SECRET}
-      expiration-ms: 86400000  # 24 小时
+      expiration-ms: 86400000
 
-# gRPC 配置
 grpc:
   server:
     port: 9090
   python:
-    host: localhost
-    port: 9091
+    host: ${PYTHON_GRPC_HOST:localhost}
+    port: ${PYTHON_GRPC_PORT:9091}
 
 python:
   runtime:
-    base-url: http://localhost:8000
+    base-url: ${PYTHON_RUNTIME_URL:http://localhost:8000}
 
 agenthub:
   internal-token: ${AGENTHUB_INTERNAL_TOKEN}
@@ -57,22 +50,19 @@ agenthub:
   cors:
     allowed-origins: ${AGENTHUB_CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
 
-# Actuator
 management:
   endpoints:
     web:
       exposure:
         include: health,info
 
-# SpringDoc
 springdoc:
   api-docs:
     path: /api-docs
   swagger-ui:
     path: /swagger-ui.html
 
-# 日志
 logging:
   level:
-    com.agenthub: DEBUG
+    com.agenthub: INFO
     org.springframework.security: INFO
