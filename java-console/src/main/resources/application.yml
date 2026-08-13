@@ -6,9 +6,9 @@ spring:
     name: ai-agent-hub-java-console
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/agenthub
-    username: agenthub
-    password: agenthub123
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:agenthub}
+    username: ${DB_USER:agenthub}
+    password: ${DB_PASSWORD:agenthub123}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -31,12 +31,11 @@ spring:
 
   data:
     redis:
-      host: localhost
-      port: 6380
+      url: ${REDIS_URL:redis://:123456@localhost:6380/0}
 
   security:
     jwt:
-      secret: CHANGE_ME_IN_PRODUCTION_USE_256_BIT_KEY
+      secret: ${JWT_SECRET}
       expiration-ms: 86400000  # 24 小时
 
 # gRPC 配置
