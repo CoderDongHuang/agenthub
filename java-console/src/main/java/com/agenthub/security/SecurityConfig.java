@@ -61,6 +61,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/auth/csrf").permitAll()
                 .requestMatchers("/api/health").permitAll()
+                .requestMatchers("/api/channel/**").permitAll()
                 .requestMatchers("/api/v1/**").permitAll()           // API Key 认证
                 .requestMatchers("/api-docs/**", "/swagger-ui/**").permitAll()
                 .requestMatchers("/api/internal/**", "/api/approvals/create", "/api/tools/register")
