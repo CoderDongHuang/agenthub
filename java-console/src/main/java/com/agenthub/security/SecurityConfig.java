@@ -47,7 +47,7 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf
                 .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-                .ignoringRequestMatchers("/api/v1/**", "/api/internal/**"))
+                .ignoringRequestMatchers("/api/v1/**", "/api/internal/**", "/api/channel/**"))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .headers(headers -> headers
                 .contentSecurityPolicy(csp -> csp.policyDirectives(
@@ -71,7 +71,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().denyAll()
             )
-            .addFilterBefore(internalAuthenticationFilter, JwtAuthenticationFilter.class)
+            .addFilterBefore(internalAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
