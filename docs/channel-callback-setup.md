@@ -1,9 +1,9 @@
 # Channel Callback Setup
 
-The local callback base URL is the current ngrok URL. It is temporary and changes when ngrok is restarted.
+The local callback base URL is the current cpolar URL. It is temporary and changes when cpolar is restarted.
 
 ```text
-https://sixfold-fracture-detail.ngrok-free.dev
+https://4c7b15ff.r19.vip.cpolar.cn
 ```
 
 ## Feishu
@@ -11,7 +11,7 @@ https://sixfold-fracture-detail.ngrok-free.dev
 Callback URL:
 
 ```text
-https://sixfold-fracture-detail.ngrok-free.dev/api/channel/feishu/callback
+https://4c7b15ff.r19.vip.cpolar.cn/api/channel/feishu/callback
 ```
 
 Event subscription settings:
@@ -31,15 +31,17 @@ URL verification must return JSON exactly in this shape:
 
 ## WeCom
 
-Receive-message URL:
+Receive-message URL is intentionally not configured:
 
 ```text
-https://sixfold-fracture-detail.ngrok-free.dev/api/channel/wechat/callback
+WECHAT_CALLBACK_URL=
 ```
 
-In WeCom application settings, configure:
+WeCom rejects callback domains owned by third-party tunnel providers. Keep `WECHAT_CALLBACK_URL` empty until an enterprise-owned and WeCom-verified HTTPS domain is available. The Corp ID, Agent ID, Secret, Token, and EncodingAESKey can remain configured locally.
 
-- URL: the URL above
+When an eligible domain is available, configure:
+
+- URL: `https://<enterprise-domain>/api/channel/wechat/callback`
 - Token: the configured `WECHAT_TOKEN`
 - EncodingAESKey: the configured `WECHAT_ENCODING_AES_KEY`
 - Message receive enabled for the application
@@ -54,7 +56,7 @@ For outbound replies, the application must have permission to send messages and 
 Callback URL:
 
 ```text
-https://sixfold-fracture-detail.ngrok-free.dev/api/channel/dingtalk/callback
+https://4c7b15ff.r19.vip.cpolar.cn/api/channel/dingtalk/callback
 ```
 
 Enable the robot/application event subscription for incoming messages and configure the same signing secret as the local `DINGTALK_SIGN_SECRET`. The robot must be allowed to send messages in the target conversation. The Webhook URL is used for outbound robot messages; it is not the inbound callback URL.
@@ -64,6 +66,6 @@ Enable the robot/application event subscription for incoming messages and config
 - Docker PostgreSQL/pgvector: `localhost:5432`
 - Redis: `localhost:6380`
 - Java API: `localhost:8080`
-- ngrok tunnel target: `http://localhost:8080`
+- cpolar tunnel target: `http://localhost:8080`
 
 The `.env` file remains local and must not be committed.
