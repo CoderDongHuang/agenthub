@@ -47,7 +47,10 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf
                 .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-                .ignoringRequestMatchers("/api/v1/**", "/api/internal/**", "/api/channel/**"))
+                .ignoringRequestMatchers(
+                    "/api/v1/**", "/api/internal/**", "/api/channel/**",
+                    "/api/approvals/create", "/api/tools/register",
+                    "/api/knowledge/docs/chunks", "/api/knowledge/docs/*/chunks"))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .headers(headers -> headers
                 .contentSecurityPolicy(csp -> csp.policyDirectives(

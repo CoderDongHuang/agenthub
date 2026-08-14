@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { Renderer, Program, Mesh, Triangle } from 'ogl'
 
 const props = defineProps({
@@ -18,9 +18,19 @@ const props = defineProps({
 })
 
 const containerRef = ref(null)
-let renderer, program, mesh, raf, ro
+let renderer, program, mesh, raf, ro, intersectionObserver
 let mouseTarget = [0, 0]
 let lastTime = 0
+let lastFrame = 0
+let isVisible = true
+let isDocumentVisible = !document.hidden
+let disposed = false
+let onMove
+
+const lowPowerDevice = (navigator.hardwareConcurrency || 4) <= 4
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+const maxDpr = lowPowerDevice ? 1.25 : 1.5
+const frameInterval = reducedMotion ? 1000 / 12 : lowPowerDevice ? 1000 / 30 : 1000 / 60
 
 const hexToRGB = (hex) => {
   const c = hex.replace('#', '').padEnd(6, '0')
@@ -98,7 +108,11 @@ onMounted(() => {
   const el = containerRef.value
   if (!el) return
 
-  renderer = new Renderer({ dpr: Math.min(devicePixelRatio || 1, 2), alpha: true, antialias: true })
+  renderer = new Renderer({
+    dpr: Math.min(devicePixelRatio || 1, maxDpr),
+    alpha: true,
+    antialias: !lowPowerDevice,
+  })
   const gl = renderer.gl
   const canvas = gl.canvas
   canvas.style.cssText = 'width:100%;height:100%;display:block;pointer-events:auto'
@@ -140,7 +154,7 @@ onMounted(() => {
   ro = new ResizeObserver(resize)
   ro.observe(el)
 
-  const onMove = (e) => {
+  onMove = (e) => {
     const rect = canvas.getBoundingClientRect()
     const scale = renderer.dpr || 1
     mouseTarget = [(e.clientX - rect.left) * scale, (rect.height - (e.clientY - rect.top)) * scale]
@@ -148,7 +162,11 @@ onMounted(() => {
   canvas.addEventListener('pointermove', onMove)
 
   const loop = (t) => {
+    raf = undefined
+    if (disposed || !isVisible || !isDocumentVisible) return
     raf = requestAnimationFrame(loop)
+    if (t - lastFrame < frameInterval) return
+    lastFrame = t
     program.uniforms.iTime.value = t * 0.001
     if (!lastTime) lastTime = t
     const dt = (t - lastTime) / 1000
@@ -161,17 +179,48 @@ onMounted(() => {
     cur[1] += (mouseTarget[1] - cur[1]) * factor
     renderer.render({ scene: mesh })
   }
-  raf = requestAnimationFrame(loop)
+  const resume = () => {
+    if (!disposed && isVisible && isDocumentVisible && !raf) {
+      lastTime = 0
+      lastFrame = 0
+      raf = requestAnimationFrame(loop)
+    }
+  }
+  const onVisibilityChange = () => {
+    isDocumentVisible = !document.hidden
+    if (!isDocumentVisible && raf) {
+      cancelAnimationFrame(raf)
+      raf = undefined
+    }
+    resume()
+  }
+  document.addEventListener('visibilitychange', onVisibilityChange)
+  intersectionObserver = new IntersectionObserver(([entry]) => {
+    isVisible = entry?.isIntersecting ?? true
+    if (!isVisible && raf) {
+      cancelAnimationFrame(raf)
+      raf = undefined
+    }
+    resume()
+  }, { threshold: 0.01 })
+  intersectionObserver.observe(el)
+  resume()
+
+  el.__lightfallCleanup = () => document.removeEventListener('visibilitychange', onVisibilityChange)
 })
 
 onUnmounted(() => {
-  cancelAnimationFrame(raf)
+  disposed = true
+  if (raf) cancelAnimationFrame(raf)
   ro?.disconnect()
+  intersectionObserver?.disconnect()
   if (renderer) {
     const canvas = renderer.gl.canvas
+    if (onMove) canvas.removeEventListener('pointermove', onMove)
     if (canvas.parentElement === containerRef.value) containerRef.value.removeChild(canvas)
     if (renderer.gl) { const ext = renderer.gl.getExtension('WEBGL_lose_context'); if (ext) ext.loseContext(); }
   }
+  containerRef.value?.__lightfallCleanup?.()
 })
 </script>
 

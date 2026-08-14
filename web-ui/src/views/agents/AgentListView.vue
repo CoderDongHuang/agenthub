@@ -53,42 +53,16 @@ const filteredAgents = computed(() => agents.value.filter((agent) => {
 }))
 
 const modelOptions = ref<Array<{ label: string; value: string }>>([
-  // OpenAI
-  { label: 'GPT-4o (🧠推理)', value: 'gpt-4o' },
-  { label: 'GPT-4o-mini (⚡速度)', value: 'gpt-4o-mini' },
-  // Anthropic Claude
-  { label: 'Claude Opus 4.8 (🧠推理)', value: 'claude-opus-4-8' },
-  { label: 'Claude Sonnet 5 (⚡速度)', value: 'claude-sonnet-5' },
-  // DeepSeek (2026.04 V4系列)
-  { label: 'DeepSeek-V4-Pro (🧠推理)', value: 'deepseek-v4-pro' },
-  { label: 'DeepSeek-V4-Flash (⚡速度)', value: 'deepseek-v4-flash' },
-  // 阿里通义千问
-  { label: '通义千问-Max (🧠推理)', value: 'qwen-max' },
-  { label: '通义千问-Plus (⚡速度)', value: 'qwen-plus' },
-  // Moonshot Kimi
-  { label: 'Kimi-K2.6 (🧠推理)', value: 'kimi-k2.6' },
-  { label: 'Kimi-K2.7-Code-HS (⚡速度)', value: 'kimi-k2.7-code-hs' },
-  // 智谱 GLM (2026 4.7系列)
-  { label: 'GLM-4.7 (🧠推理)', value: 'glm-4.7' },
-  { label: 'GLM-4.7-Flash (⚡速度·免费)', value: 'glm-4.7-flash' },
-  // 百川
-  { label: '百川4 (🧠推理)', value: 'baichuan4' },
-  { label: '百川4-Turbo (⚡速度)', value: 'baichuan4-turbo' },
-  // xAI Grok (马斯克)
-  { label: 'Grok-4.1 (🧠推理)', value: 'grok-4.1' },
-  { label: 'Grok-4.1-Fast (⚡速度)', value: 'grok-4.1-fast' },
-  // Mistral AI
-  { label: 'Mistral-Large (🧠推理)', value: 'mistral-large' },
-  { label: 'Mistral-Small (⚡速度)', value: 'mistral-small' },
-  // 科大讯飞 星火
-  { label: '星火-4.0-Ultra (🧠推理)', value: 'spark-4.0-ultra' },
-  { label: '星火-Lite (⚡速度)', value: 'spark-lite' },
-  // 腾讯混元
-  { label: '混元-Turbo (🧠推理)', value: 'hunyuan-turbo' },
-  { label: '混元-Lite (⚡速度)', value: 'hunyuan-lite' },
-  // MiniMax
-  { label: 'MiniMax-Text-01 (🧠推理)', value: 'minimax-text-01' },
-  { label: 'MiniMax-abab6.5s (⚡速度)', value: 'minimax-abab6.5s' },
+  { label: 'gpt-4o (openai)', value: 'gpt-4o' },
+  { label: 'gpt-4o-mini (openai)', value: 'gpt-4o-mini' },
+  { label: 'claude-sonnet-4-5 (anthropic)', value: 'claude-sonnet-4-5' },
+  { label: 'deepseek-chat (deepseek)', value: 'deepseek-chat' },
+  { label: 'deepseek-reasoner (deepseek)', value: 'deepseek-reasoner' },
+  { label: 'qwen-plus (qwen)', value: 'qwen-plus' },
+  { label: 'qwen-turbo (qwen)', value: 'qwen-turbo' },
+  { label: 'moonshot-v1-32k (moonshot)', value: 'moonshot-v1-32k' },
+  { label: 'glm-4-plus (zhipu)', value: 'glm-4-plus' },
+  { label: 'mistral-large-latest (mistral)', value: 'mistral-large-latest' },
 ])
 
 const fetchModels = async () => {
@@ -100,6 +74,8 @@ const fetchModels = async () => {
         label: `${model.id} (${model.provider}${model.configured ? '' : ' - not configured'})`,
         value: model.id,
       }))
+      const configured = models.find((model: any) => model.configured)
+      if (!isEdit.value && configured) form.value.model = configured.id
     }
   } catch { /* Keep the bundled last-known-good catalog while runtime is offline. */ }
 }

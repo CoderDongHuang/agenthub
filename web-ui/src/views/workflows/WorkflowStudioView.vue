@@ -81,7 +81,7 @@ async function runFlow() {
   activeStep.value = 0
   try {
     await save()
-    const response = await api.post(`/workspace/workflow/${workflow.value.id}/run`) as any
+    const response = await api.post(`/workspace/workflow/${workflow.value.id}/run`, {}) as any
     if (response.code !== 200) throw new Error(response.message)
     const completedIds = new Set((response.data?.steps || [])
       .filter((step: any) => step.status === 'completed').map((step: any) => Number(step.nodeId)))

@@ -1,6 +1,6 @@
 # Channel Callback Setup
 
-The local callback base URL is the current cpolar URL. It is temporary and changes when cpolar is restarted.
+The local callback base URL is the current cpolar URL. It was verified with HTTP 200 on 2026-08-14. It is temporary and changes when cpolar is restarted.
 
 ```text
 https://4c7b15ff.r19.vip.cpolar.cn
@@ -69,3 +69,5 @@ Enable the robot/application event subscription for incoming messages and config
 - cpolar tunnel target: `http://localhost:8080`
 
 The `.env` file remains local and must not be committed.
+
+For the complete non-secret configuration inventory and test record, see `docs/全链路验收与配置清单.md`.

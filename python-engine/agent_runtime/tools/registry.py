@@ -66,6 +66,8 @@ class ToolRegistry:
         if len(internal_token) < 32:
             raise RuntimeError("AGENTHUB_INTERNAL_TOKEN must contain at least 32 characters")
         java_console_url = os.getenv("JAVA_CONSOLE_URL", "http://localhost:8080").rstrip("/")
+        failures = []
+        synced = 0
         async with httpx.AsyncClient(timeout=10) as client:
             for tool in self.list_all():
                 try:
@@ -84,11 +86,17 @@ class ToolRegistry:
                         }
                     )
                     if resp.status_code == 200:
+                        synced += 1
                         log.info(f"Synced tool to Java: {tool.name}")
                     else:
+                        failures.append(tool.name)
                         log.warning(f"Failed to sync tool {tool.name}: {resp.status_code}")
                 except Exception as e:
+                    failures.append(tool.name)
                     log.warning(f"Failed to sync tool {tool.name}: {e}")
+        if failures:
+            raise RuntimeError(f"Failed to sync {len(failures)} tool(s): {', '.join(failures)}")
+        return synced
 
     def _tool_to_schema(self, tool: AgentTool) -> dict:
         """从工具生成 JSON Schema"""

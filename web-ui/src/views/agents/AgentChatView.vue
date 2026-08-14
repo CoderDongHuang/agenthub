@@ -4,19 +4,20 @@ import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, Check, Connection, Promotion, Setting } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import MarkdownIt from 'markdown-it'
-import api from '../../api'
+import api, { getCsrfHeaders } from '../../api'
 
 interface Message {
   role: 'user' | 'assistant' | 'tool_start' | 'tool_end' | 'error' | 'system'
   content: string
   toolName?: string
   time?: string
+  failed?: boolean
 }
 
 const route = useRoute()
 const router = useRouter()
 const agentId = route.params.id as string
-const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
+const apiBaseUrl = import.meta.env.VITE_API_URL || '/api'
 const messages = ref<Message[]>([])
 const inputText = ref('')
 const sending = ref(false)
@@ -57,8 +58,17 @@ function handleSSE(event: string, data: string, assistantMessage: Message) {
   if (event === 'text') assistantMessage.content += data
   if (event === 'tool_start') messages.value.push({ role: 'tool_start', content: data, toolName: data, time: now() })
   if (event === 'tool_end') messages.value.push({ role: 'tool_end', content: data, time: now() })
-  if (event === 'error') messages.value.push({ role: 'error', content: data, time: now() })
-  if ((event === 'done' || event === 'complete') && !assistantMessage.content) assistantMessage.content = '本次执行没有返回文本结果。'
+  if (event === 'error') {
+    assistantMessage.failed = true
+    if (!assistantMessage.content) {
+      const index = messages.value.indexOf(assistantMessage)
+      if (index >= 0) messages.value.splice(index, 1)
+    }
+    messages.value.push({ role: 'error', content: data, time: now() })
+  }
+  if ((event === 'done' || event === 'complete') && !assistantMessage.content && !assistantMessage.failed) {
+    assistantMessage.content = '本次执行没有返回文本结果。'
+  }
 }
 
 function parseSSEBlock(block: string, assistantMessage: Message) {
@@ -92,11 +102,12 @@ async function sendMessage() {
   scrollToBottom()
 
   try {
+    const csrfHeaders = await getCsrfHeaders()
     const response = await fetch(`${apiBaseUrl}/agents/${agentId}/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...csrfHeaders },
       credentials: 'include',
-      body: JSON.stringify({ message: text, sessionId: sessionId.value, userId: '1' }),
+      body: JSON.stringify({ message: text, sessionId: sessionId.value }),
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const reader = response.body?.getReader()

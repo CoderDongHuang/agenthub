@@ -1,22 +1,61 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8080/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   timeout: 30000,
   withCredentials: true,
-  xsrfCookieName: 'XSRF-TOKEN',
+  // Spring Security returns a masked token; do not overwrite it with the raw cookie value.
+  xsrfCookieName: '',
   xsrfHeaderName: 'X-XSRF-TOKEN',
   headers: {
     'Content-Type': 'application/json',
   },
 })
 
-// 请求拦截器 — 自动附加 JWT Token
+let csrfToken = ''
+let csrfRequest: Promise<string> | null = null
+const csrfMethods = new Set(['post', 'put', 'patch', 'delete'])
+
+async function getCsrfToken() {
+  if (csrfToken) return csrfToken
+  if (!csrfRequest) {
+    csrfRequest = (api.get('/auth/csrf') as Promise<any>)
+      .then(response => {
+        csrfToken = response.data?.token || ''
+        if (!csrfToken) throw new Error('CSRF token is unavailable')
+        return csrfToken
+      })
+      .finally(() => { csrfRequest = null })
+  }
+  return csrfRequest
+}
+
+export async function getCsrfHeaders() {
+  return { 'X-XSRF-TOKEN': await getCsrfToken() }
+}
+
+api.interceptors.request.use(async (config) => {
+  if (csrfMethods.has((config.method || 'get').toLowerCase())) {
+    const token = await getCsrfToken()
+    config.headers.set('X-XSRF-TOKEN', token)
+  }
+  return config
+})
+
 // 响应拦截器 — 401 跳登录
 api.interceptors.response.use(
   (response) => response.data,
-  (error) => {
-    if (error.response?.status === 401 || error.response?.status === 403) {
+  async (error) => {
+    const config = error.config as any
+    const method = (config?.method || 'get').toLowerCase()
+    if (error.response?.status === 403 && csrfMethods.has(method) && !config?._csrfRetried) {
+      config._csrfRetried = true
+      csrfToken = ''
+      const token = await getCsrfToken()
+      config.headers.set('X-XSRF-TOKEN', token)
+      return api.request(config)
+    }
+    if (error.response?.status === 401) {
       window.location.href = '/login'
     }
     return Promise.reject(error)
@@ -24,7 +63,7 @@ api.interceptors.response.use(
 )
 
 export const runtimeApi = axios.create({
-  baseURL: import.meta.env.VITE_RUNTIME_URL || 'http://localhost:8000',
+  baseURL: import.meta.env.VITE_RUNTIME_URL || '/runtime-api',
   timeout: 30000,
   withCredentials: true,
 })

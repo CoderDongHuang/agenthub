@@ -75,14 +75,13 @@ public class ToolController {
 
     @GetMapping
     public ApiResponse<Page<Map<String, Object>>> list(Pageable pageable) {
-        List<Map<String, Object>> tools = jdbc.queryForList(
-                "SELECT * FROM tool_definition WHERE tenant_id = ? ORDER BY created_at DESC", currentUser.tenantId()
+        Long total = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM tool_definition WHERE tenant_id = ?", Long.class, currentUser.tenantId()
         );
-        long total = tools.size();
-        int start = (int) pageable.getOffset();
-        int end = Math.min(start + pageable.getPageSize(), tools.size());
-        if (start >= tools.size()) start = tools.size();
-
-        return ApiResponse.ok(new PageImpl<>(tools.subList(start, end), pageable, total));
+        List<Map<String, Object>> tools = jdbc.queryForList(
+                "SELECT * FROM tool_definition WHERE tenant_id = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
+                currentUser.tenantId(), pageable.getPageSize(), pageable.getOffset()
+        );
+        return ApiResponse.ok(new PageImpl<>(tools, pageable, total == null ? 0 : total));
     }
 }

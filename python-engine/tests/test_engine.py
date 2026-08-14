@@ -2,6 +2,7 @@
 import asyncio
 import sys
 import os
+from unittest.mock import MagicMock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agent_runtime.core.engine import AgentEngine, get_retriever
@@ -9,13 +10,29 @@ from agent_runtime.core.llm_client import LLMClient, has_any_api_key
 from agent_runtime.core.tool_executor import ToolExecutor
 from agent_runtime.core.session_manager import SessionManager
 from agent_runtime.grpc_client import agent_hub_pb2
+from agent_runtime.rag.retriever import Retriever
+
+
+class InMemorySessionManager:
+    def __init__(self):
+        self.sessions = {}
+
+    async def get_or_create(self, session_id, tenant_id="0"):
+        return self.sessions.setdefault(
+            (tenant_id, session_id),
+            {"session_id": session_id, "tenant_id": tenant_id, "messages": []},
+        )
+
+    async def save(self, session_id, data, tenant_id="0"):
+        self.sessions[(tenant_id, session_id)] = data
 
 
 def test_engine_demo_mode():
     """Demo 模式（无 API Key）应返回提示消息"""
-    engine = AgentEngine(LLMClient(), ToolExecutor(), SessionManager())
+    os.environ["AGENTHUB_DEMO_MODE"] = "true"
+    engine = AgentEngine(LLMClient(), ToolExecutor(), InMemorySessionManager())
     req = agent_hub_pb2.ExecutionRequest(
-        session_id="test-1", agent_id="1", user_id="1", message="Hello"
+        session_id="test-1", agent_id="1", tenant_id="0", user_id="1", message="Hello"
     )
     responses = []
 
@@ -35,9 +52,10 @@ def test_engine_demo_mode():
 
 def test_engine_with_tool_calling():
     """引擎应能处理 tool call 流转"""
-    engine = AgentEngine(LLMClient(), ToolExecutor(), SessionManager())
+    os.environ["AGENTHUB_DEMO_MODE"] = "true"
+    engine = AgentEngine(LLMClient(), ToolExecutor(), InMemorySessionManager())
     req = agent_hub_pb2.ExecutionRequest(
-        session_id="test-2", agent_id="1", user_id="1", message="What is 1+1?"
+        session_id="test-2", agent_id="1", tenant_id="0", user_id="1", message="What is 1+1?"
     )
     types = []
 
@@ -52,16 +70,18 @@ def test_engine_with_tool_calling():
 
 
 def test_retriever_index_and_search():
-    """检索器应能索引和检索文档"""
-    retriever = get_retriever()
-    retriever.index("test-doc", ["AI Agent Hub supports DeepSeek and GPT-4o models."])
+    """检索器应使用数据库连接完成索引和检索。"""
+    connection = MagicMock()
+    cursor = MagicMock()
+    connection.__enter__.return_value = connection
+    connection.cursor.return_value.__enter__.return_value = cursor
+    retriever = Retriever(lambda: connection)
+    retriever.index("1", ["AI Agent Hub supports DeepSeek and GPT-4o models."])
+    cursor.fetchall.return_value = [("AI Agent Hub supports DeepSeek and GPT-4o models.", 0.95)]
 
     context = retriever.get_context("DeepSeek GPT-4o models supported", top_k=1)
-    # TF-IDF 检索在短文本+同义词场景得分可能低于阈值，验证不报错即可
-    assert isinstance(context, str)
-
-    stats = retriever.stats()
-    assert stats["total_chunks"] > 0
+    assert "DeepSeek" in context
+    assert cursor.execute.call_count >= 4
 
 
 def test_llm_client_model_map():

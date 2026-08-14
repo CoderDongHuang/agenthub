@@ -4,6 +4,7 @@
 import asyncio
 import inspect
 import logging
+import os
 import time
 from typing import Any, Dict, List, Optional
 
@@ -23,6 +24,7 @@ class ToolExecutor:
         self._tools: Dict[str, AgentTool] = {}
         self._call_counts: Dict[str, int] = {}
         self._registry = ToolRegistry()
+        self._concurrency = asyncio.Semaphore(max(1, int(os.getenv("TOOL_MAX_CONCURRENCY", "8"))))
         self._register_builtin_tools()
         self._discover_custom_tools()
 
@@ -41,12 +43,10 @@ class ToolExecutor:
 
     async def sync_to_java(self):
         """同步所有工具到 Java Console"""
-        await self._registry.sync_to_java()
-        # Also sync built-in tools not yet in registry
         for tool in self.list_tools():
             if not self._registry.get(tool.name):
                 self._registry.register(tool)
-        await self._registry.sync_to_java()
+        return await self._registry.sync_to_java()
 
     def register(self, tool: AgentTool):
         """注册一个工具"""
@@ -77,10 +77,11 @@ class ToolExecutor:
 
         try:
             log.info(f"Execute tool: {tool_name}({args})")
-            result = await asyncio.wait_for(
-                tool.execute(**args),
-                timeout=tool.timeout,
-            )
+            async with self._concurrency:
+                result = await asyncio.wait_for(
+                    tool.execute(**args),
+                    timeout=tool.timeout,
+                )
             return str(result)
         except asyncio.TimeoutError:
             log.error(f"Tool timeout: {tool_name} ({tool.timeout}s)")

@@ -18,7 +18,6 @@ export const useAuthStore = defineStore('auth', () => {
   const isAdmin = computed(() => user.value?.roles?.includes('admin') ?? false)
 
   async function login(username: string, password: string) {
-    await api.get('/auth/csrf')
     const res = await api.post('/auth/login', { username, password }) as any
     const data = res.data
     authenticated.value = true

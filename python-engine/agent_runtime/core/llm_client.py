@@ -9,6 +9,7 @@ from typing import Dict
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_openai import ChatOpenAI
+from agent_runtime.core.performance import BoundedTTLCache
 
 log = logging.getLogger(__name__)
 
@@ -157,14 +158,18 @@ class LLMClient:
     """多模型 LLM 客户端 — 12 家公司 24 个模型统一入口"""
 
     def __init__(self):
-        self._models: Dict[str, BaseChatModel] = {}
+        self._models: BoundedTTLCache[str, BaseChatModel] = BoundedTTLCache(
+            max_size=int(os.getenv("LLM_MODEL_CACHE_SIZE", "16")),
+            ttl_seconds=float(os.getenv("LLM_MODEL_CACHE_TTL_SECONDS", "3600")),
+        )
 
     def get_model(self, model_name: str, temperature: float = 0.7, max_tokens: int = 4096) -> BaseChatModel:
         """获取或创建 ChatModel 实例（带缓存）"""
         cache_key = f"{model_name}_{temperature}_{max_tokens}"
-        if cache_key not in self._models:
-            self._models[cache_key] = self._create_model(model_name, temperature, max_tokens)
-        return self._models[cache_key]
+        return self._models.get_or_create(
+            cache_key,
+            lambda: self._create_model(model_name, temperature, max_tokens),
+        )
 
     def _create_model(self, model_name: str, temperature: float, max_tokens: int) -> BaseChatModel:
         """根据模型名创建对应实例"""

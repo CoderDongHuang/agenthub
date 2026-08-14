@@ -3,6 +3,8 @@ Python gRPC Server — grpc.aio 异步实现
 Java Console 通过 gRPC 调用此服务来执行 Agent
 """
 import logging
+import asyncio
+import time
 
 import grpc
 
@@ -10,6 +12,7 @@ from agent_runtime.core.engine import AgentEngine
 from agent_runtime.core.llm_client import LLMClient
 from agent_runtime.core.session_manager import SessionManager
 from agent_runtime.core.tool_executor import ToolExecutor
+from agent_runtime.core.performance import runtime_metrics
 from agent_runtime.grpc_client import agent_hub_pb2, agent_hub_pb2_grpc
 
 log = logging.getLogger(__name__)
@@ -31,12 +34,39 @@ class AgentExecutionServicer(agent_hub_pb2_grpc.AgentExecutionServicer):
         """
         async for request in request_iterator:
             log.info(f"Agent execution: session={request.session_id}, msg={request.message[:80]}...")
-            async for response in self.engine.execute(request):
-                yield response
+            started = time.perf_counter()
+            first_token_recorded = False
+            failed = False
+            cancelled = False
+            try:
+                async for response in self.engine.execute(request):
+                    if context.cancelled():
+                        self.engine.cancel(request.session_id)
+                        cancelled = True
+                        break
+                    if not first_token_recorded and response.type == agent_hub_pb2.ExecutionResponse.TEXT:
+                        runtime_metrics.observe_first_token((time.perf_counter() - started) * 1000)
+                        first_token_recorded = True
+                    failed = failed or response.type == agent_hub_pb2.ExecutionResponse.ERROR
+                    yield response
+            except asyncio.CancelledError:
+                self.engine.cancel(request.session_id)
+                cancelled = True
+                raise
+            finally:
+                runtime_metrics.observe_request(
+                    (time.perf_counter() - started) * 1000,
+                    error=failed,
+                    cancelled=cancelled,
+                )
 
     async def StopSession(self, request: agent_hub_pb2.StopSessionRequest, context):
         log.info(f"Stop session: {request.session_id}")
-        return agent_hub_pb2.StopSessionResponse(success=True, message="OK")
+        cancelled = self.engine.cancel(request.session_id)
+        return agent_hub_pb2.StopSessionResponse(
+            success=cancelled,
+            message="Cancellation requested" if cancelled else "Session is not running",
+        )
 
 
 class ToolRegistryServicer(agent_hub_pb2_grpc.ToolRegistryServicer):

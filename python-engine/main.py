@@ -3,6 +3,7 @@ AI Agent Hub — Python Agent 运行时
 FastAPI 服务 + gRPC Server 入口
 """
 import logging
+import asyncio
 import os
 import time
 import secrets
@@ -26,6 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from agent_runtime.core.engine import get_retriever
 from agent_runtime.core.llm_client import get_provider_status
 from agent_runtime.core.tool_executor import ToolExecutor
+from agent_runtime.core.performance import runtime_metrics
 from agent_runtime.grpc_client.client import get_grpc_client
 from agent_runtime.grpc_client.server import GrpcServer, get_engine, get_tool_executor
 from agent_runtime.rag.chunker import DocumentChunker
@@ -81,19 +83,24 @@ async def startup_event():
     # 连接 Java Console gRPC 做健康检查
     try:
         client = get_grpc_client()
-        if client.health_check():
+        if await asyncio.to_thread(client.health_check):
             log.info("gRPC 连接 Java Console 成功")
         else:
             log.warning("gRPC 健康检查未通过，Java Console 可能未启动")
     except Exception as e:
         log.warning(f"gRPC 连接失败: {e}，Java Console 可能未启动")
     # 同步工具到 Java Console
-    try:
-        tool_executor = get_tool_executor()
-        await tool_executor.sync_to_java()
-        log.info(f"Synced {len(tool_executor.list_tools())} tools to Java Console")
-    except Exception as e:
-        log.warning(f"Tool sync failed: {e}")
+    tool_executor = get_tool_executor()
+    for attempt in range(1, 4):
+        try:
+            synced = await tool_executor.sync_to_java()
+            log.info("Synced %s tools to Java Console", synced)
+            break
+        except Exception as e:
+            log.warning("Tool sync attempt %s/3 failed: %s", attempt, e)
+            if attempt < 3:
+                runtime_metrics.increment_retry("tool_sync")
+                await asyncio.sleep(attempt)
 
     await bootstrap_rag_index()
 
@@ -147,7 +154,7 @@ async def health():
     grpc_ok = False
     try:
         client = get_grpc_client()
-        grpc_ok = client.health_check()
+        grpc_ok = await asyncio.to_thread(client.health_check)
     except Exception:
         pass
 
@@ -252,9 +259,15 @@ async def runtime_capabilities(request: Request):
             ],
         },
         "rag": retriever_stats,
+        "performance": runtime_metrics.snapshot(),
     }
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=os.getenv("UVICORN_RELOAD", "false").lower() == "true",
+    )

@@ -1,6 +1,6 @@
 # API 参考
 
-Java 管理面默认地址为 `http://localhost:8080/api`。除登录和内部接口外，请求需要 JWT。
+Java 管理面默认地址为 `http://localhost:8080/api`。控制台接口使用 HttpOnly 认证 Cookie；外部 Agent API 使用 `X-API-Key`；Java-Python 内部接口使用内部服务凭据。
 
 ## 统一响应
 
@@ -23,10 +23,13 @@ Content-Type: application/json
 {"username":"admin","password":"admin123"}
 ```
 
-后续请求：
+登录会设置 `AGENTHUB_AUTH` HttpOnly Cookie。写请求还需先获取 CSRF Token：
 
 ```http
-Authorization: Bearer eyJ...
+GET /api/auth/csrf
+Cookie: AGENTHUB_AUTH=<由登录响应设置>
+
+X-XSRF-TOKEN: <响应 data.token>
 ```
 
 ## Agent
@@ -37,7 +40,7 @@ POST   /api/agents
 GET    /api/agents/{id}
 PUT    /api/agents/{id}
 DELETE /api/agents/{id}
-POST   /api/agents/{id}/publish
+PUT    /api/agents/{id}/publish
 POST   /api/agents/{id}/chat
 ```
 
@@ -62,9 +65,9 @@ POST   /api/knowledge/upload
 POST   /api/knowledge/text
 GET    /api/knowledge/docs/{id}
 DELETE /api/knowledge/docs/{id}
-GET    /api/knowledge/docs/chunks
-POST   /api/knowledge/docs/{id}/chunks
 ```
+
+分块写入属于 `/api/internal/knowledge/**` 内部同步接口，不向浏览器公开。
 
 Python 运行时：
 
@@ -119,16 +122,16 @@ PUT /api/billing/budget
 }
 ```
 
-## curl 完整示例
+## 外部 API Key 示例
 
 ```bash
-TOKEN=$(curl -s http://localhost:8080/api/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"admin123"}' | jq -r '.data.token')
-
-curl http://localhost:8080/api/billing/usage \
-  -H "Authorization: Bearer $TOKEN"
+curl -X POST http://localhost:8080/api/v1/chat \
+  -H "X-API-Key: ak-your-key" \
+  -H "Content-Type: application/json" \
+  -d '{"agentId":1,"message":"只回复 OK"}'
 ```
+
+控制台自动处理 Cookie 和 CSRF。命令行调用控制台写接口时，应使用 Cookie Jar 保存登录 Cookie，并把 `/api/auth/csrf` 的 `data.token` 放入 `X-XSRF-TOKEN`。
 
 ## 错误处理
 

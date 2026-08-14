@@ -3,8 +3,7 @@ package com.agenthub.agent.service;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
-import org.apache.pdfbox.pdmodel.font.PDType1Font;
-import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
 
@@ -101,9 +100,13 @@ class DocumentExtractionServiceTest {
         try (PDDocument document = new PDDocument()) {
             PDPage page = new PDPage();
             document.addPage(page);
-            try (PDPageContentStream content = new PDPageContentStream(document, page)) {
+            var fontStream = DocumentExtractionServiceTest.class.getResourceAsStream(
+                    "/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf"
+            );
+            if (fontStream == null) throw new IllegalStateException("PDFBox test font is unavailable");
+            try (fontStream; PDPageContentStream content = new PDPageContentStream(document, page)) {
                 content.beginText();
-                content.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 12);
+                content.setFont(PDType0Font.load(document, fontStream), 12);
                 content.newLineAtOffset(72, 720);
                 content.showText(text);
                 content.endText();

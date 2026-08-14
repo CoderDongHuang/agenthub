@@ -2,6 +2,7 @@
 Agent 执行引擎 — Python 运行时核心
 ReAct 循环: 推理 → 行动 → 观察 → 推理，支持流式输出 + RAG 检索
 """
+import asyncio
 import json
 import logging
 import os
@@ -12,6 +13,7 @@ from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, System
 from agent_runtime.core.llm_client import LLMClient, has_any_api_key
 from agent_runtime.core.tool_executor import ToolExecutor
 from agent_runtime.core.session_manager import SessionManager
+from agent_runtime.core.performance import KeyedConcurrencyLimiter, runtime_metrics
 from agent_runtime.grpc_client import agent_hub_pb2
 from agent_runtime.rag.retriever import Retriever
 
@@ -53,6 +55,17 @@ class AgentEngine:
         self.llm_client = llm_client
         self.tool_executor = tool_executor
         self.session_manager = session_manager
+        self._model_concurrency = KeyedConcurrencyLimiter(
+            int(os.getenv("LLM_MAX_CONCURRENCY_PER_TENANT_MODEL", "4"))
+        )
+        self._cancellations: Dict[str, asyncio.Event] = {}
+
+    def cancel(self, session_id: str) -> bool:
+        event = self._cancellations.get(session_id)
+        if event is None:
+            return False
+        event.set()
+        return True
 
     async def execute(self, request: agent_hub_pb2.ExecutionRequest) -> AsyncGenerator[agent_hub_pb2.ExecutionResponse, None]:
         """
@@ -63,6 +76,8 @@ class AgentEngine:
         """
         session_id = request.session_id
         user_message = request.message
+        cancel_event = asyncio.Event()
+        self._cancellations[session_id] = cancel_event
 
         log.info(f"Agent 执行开始: session={session_id}, msg={user_message[:50]}...")
 
@@ -146,7 +161,11 @@ class AgentEngine:
                 iteration += 1
 
                 # 5.1 用非流式调用获取完整 tool_calls（DeepSeek 流式下 args 为空）
-                response = await llm_with_tools.ainvoke(messages)
+                if cancel_event.is_set():
+                    raise asyncio.CancelledError()
+                limiter_key = f"{request.tenant_id}:{agent_config['model']}"
+                async with self._model_concurrency.slot(limiter_key):
+                    response = await llm_with_tools.ainvoke(messages)
 
                 # 5.2 如果有工具调用，执行并继续循环
                 if hasattr(response, "tool_calls") and response.tool_calls:
@@ -214,6 +233,8 @@ class AgentEngine:
                                 continue
 
                         # 执行工具
+                        if cancel_event.is_set():
+                            raise asyncio.CancelledError()
                         result = await self.tool_executor.execute(tool_name, tool_args)
                         yield self._make_response(
                             agent_hub_pb2.ExecutionResponse.TOOL_END,
@@ -249,9 +270,15 @@ class AgentEngine:
             # 7. 完成
             yield self._make_response(agent_hub_pb2.ExecutionResponse.COMPLETE, content="")
 
+        except asyncio.CancelledError:
+            log.info("Agent execution cancelled: session=%s", session_id)
+            raise
         except Exception as e:
             log.error(f"Agent 执行异常: {e}", exc_info=True)
             yield self._make_response(agent_hub_pb2.ExecutionResponse.ERROR, content=str(e))
+        finally:
+            if self._cancellations.get(session_id) is cancel_event:
+                self._cancellations.pop(session_id, None)
 
     async def _load_agent_config(self, agent_id: str, tenant_id: str) -> Dict[str, Any]:
         """
@@ -329,7 +356,7 @@ class AgentEngine:
                         elif status == "rejected":
                             return False
                 except Exception:
-                    pass  # 网络错误继续重试
+                    runtime_metrics.increment_retry("approval_poll")
         return False
 
     def _make_response(self, resp_type, content="", tool_name="", tool_id="", token_count=0.0) -> agent_hub_pb2.ExecutionResponse:

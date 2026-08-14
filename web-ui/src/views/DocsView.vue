@@ -51,6 +51,7 @@ const docs: DocItem[] = [
   { no: '11', title: '部署运维', desc: '环境变量、Docker、健康检查、备份和升级流程。', file: '部署运维指南.md', category: '运维', time: '20 分钟', icon: Document },
   { no: '12', title: 'API 参考', desc: '认证、Agent、知识库、工作区和用量接口示例。', file: 'API参考.md', category: '参考', time: '22 分钟', icon: Document },
   { no: '13', title: '故障排查', desc: '定位登录、CORS、模型、索引、Webhook 和数据库问题。', file: '故障排查.md', category: '参考', time: '12 分钟', icon: Document },
+  { no: '14', title: '验收与配置清单', desc: '查看三端链路验收结果、当前配置状态和剩余外部限制。', file: '全链路验收与配置清单.md', category: '运维', time: '10 分钟', icon: Document },
 ]
 const categories = ['全部', ...new Set(docs.map(doc => doc.category))]
 const selected = ref<DocItem | null>(null)
@@ -188,7 +189,7 @@ onMounted(() => {
           <nav><button v-for="doc in docs" :key="doc.file" :class="{ active: selected.file === doc.file }" @click="openDoc(doc)"><span>{{ doc.no }}</span>{{ doc.title }}</button></nav>
         </aside>
         <article class="reader-content" @click="handleReaderClick">
-          <div class="reader-meta"><span>{{ selected.category }}</span><b>最后校对：2026-07-20</b><a :href="`/docs/${encodeURIComponent(selected.file)}`" target="_blank">原始文件 <el-icon><TopRight /></el-icon></a></div>
+          <div class="reader-meta"><span>{{ selected.category }}</span><b>最后校对：2026-08-14</b><a :href="`/docs/${encodeURIComponent(selected.file)}`" target="_blank">原始文件 <el-icon><TopRight /></el-icon></a></div>
           <div v-if="loading" class="reader-state">正在读取文档...</div>
           <div v-else-if="error" class="reader-error">{{ error }}</div>
           <div v-else class="markdown-body" v-html="html" />

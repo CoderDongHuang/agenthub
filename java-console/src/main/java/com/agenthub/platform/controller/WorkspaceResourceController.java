@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestClient;
 import com.agenthub.security.CurrentUser;
 import com.agenthub.platform.service.WebhookUrlValidator;
+import com.agenthub.platform.service.WorkspaceResourceQueryService;
 import com.agenthub.platform.dto.WorkspaceResourceRequest;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Pageable;
@@ -29,25 +30,22 @@ public class WorkspaceResourceController {
     private final RestClient restClient = RestClient.create();
     private final CurrentUser currentUser;
     private final WebhookUrlValidator webhookUrlValidator;
+    private final WorkspaceResourceQueryService queryService;
 
     public WorkspaceResourceController(JdbcTemplate jdbc, ObjectMapper objectMapper,
-                                       CurrentUser currentUser, WebhookUrlValidator webhookUrlValidator) {
+                                       CurrentUser currentUser, WebhookUrlValidator webhookUrlValidator,
+                                       WorkspaceResourceQueryService queryService) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.currentUser = currentUser;
         this.webhookUrlValidator = webhookUrlValidator;
+        this.queryService = queryService;
     }
 
     @GetMapping("/{type}")
     public ApiResponse<List<Map<String, Object>>> list(@PathVariable String type, Pageable pageable) {
         validateType(type);
-        List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT id, resource_type, resource_key, name, description, config::text AS config, status, " +
-                        "created_at, updated_at FROM workspace_resource WHERE tenant_id = ? AND resource_type = ? " +
-                        "ORDER BY updated_at DESC, id LIMIT ? OFFSET ?",
-                currentUser.tenantId(), type, pageable.getPageSize(), pageable.getOffset()
-        );
-        return ApiResponse.ok(rows.stream().map(this::normalize).toList());
+        return ApiResponse.ok(queryService.list(currentUser.tenantId(), type, pageable));
     }
 
     @PostMapping("/{type}")
@@ -71,12 +69,11 @@ public class WorkspaceResourceController {
     @GetMapping("/{type}/{id}")
     public ApiResponse<Map<String, Object>> get(@PathVariable String type, @PathVariable Long id) {
         validateType(type);
-        List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT id, resource_type, resource_key, name, description, config::text AS config, status, " +
-                "created_at, updated_at FROM workspace_resource WHERE id = ? AND tenant_id = ? AND resource_type = ?",
-                id, currentUser.tenantId(), type
-        );
-        return rows.isEmpty() ? ApiResponse.error(404, "Resource not found") : ApiResponse.ok(normalize(rows.get(0)));
+        try {
+            return ApiResponse.ok(queryService.get(currentUser.tenantId(), type, id));
+        } catch (NoSuchElementException exception) {
+            return ApiResponse.error(404, "Resource not found");
+        }
     }
 
     @PutMapping("/{type}/{id}")
@@ -197,18 +194,9 @@ public class WorkspaceResourceController {
     }
 
     @GetMapping("/workflow/{id}/executions")
-    public ApiResponse<List<Map<String, Object>>> workflowExecutions(@PathVariable Long id) {
+    public ApiResponse<List<Map<String, Object>>> workflowExecutions(@PathVariable Long id, Pageable pageable) {
         getResource("workflow", id);
-        List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT id, status, result::text AS result, started_at, completed_at FROM workspace_execution " +
-                        "WHERE resource_id = ? ORDER BY started_at DESC LIMIT 20",
-                id
-        );
-        return ApiResponse.ok(rows.stream().map(row -> {
-            Map<String, Object> normalized = new LinkedHashMap<>(row);
-            normalized.put("result", parseJson(row.get("result")));
-            return normalized;
-        }).toList());
+        return ApiResponse.ok(queryService.listExecutions(currentUser.tenantId(), id, pageable));
     }
 
     private Map<String, Object> normalizeExecution(Map<String, Object> row) {
@@ -308,29 +296,11 @@ public class WorkspaceResourceController {
     }
 
     private List<Map<String, Object>> listEnabled(String type) {
-        return jdbc.queryForList(
-                "SELECT id, resource_key, name, description, config::text AS config, status FROM workspace_resource " +
-                        "WHERE tenant_id = ? AND resource_type = ? AND COALESCE((config->>'enabled')::boolean, false) = true",
-                currentUser.tenantId(), type
-        ).stream().map(this::normalize).toList();
+        return queryService.listEnabled(currentUser.tenantId(), type);
     }
 
     private Map<String, Object> getResource(String type, Long id) {
-        List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT id, resource_type, resource_key, name, description, config::text AS config, status FROM workspace_resource " +
-                "WHERE id = ? AND tenant_id = ? AND resource_type = ?",
-                id, currentUser.tenantId(), type
-        );
-        if (rows.isEmpty()) {
-            throw new NoSuchElementException("Resource not found");
-        }
-        return normalize(rows.get(0));
-    }
-
-    private Map<String, Object> normalize(Map<String, Object> row) {
-        Map<String, Object> normalized = new LinkedHashMap<>(row);
-        normalized.put("config", parseJson(row.get("config")));
-        return normalized;
+        return queryService.get(currentUser.tenantId(), type, id);
     }
 
     private Map<String, Object> finding(String type, String level, String detail) {
