@@ -49,10 +49,16 @@ import 'element-plus/es/components/tag/style/css'
 import App from './App.vue'
 import router from './router'
 import { i18n } from './i18n'
+import { initializePreferences } from './preferences'
 import './style.css'
 import './styles/site.css'
+import './styles/site-refine.css'
 import './styles/console.css'
 import './styles/console-refine.css'
+import './styles/cyber-theme.css'
+import './styles/preferences.css'
+
+initializePreferences()
 
 const app = createApp(App)
 

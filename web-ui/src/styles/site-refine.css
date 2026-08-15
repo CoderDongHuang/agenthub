@@ -1,0 +1,70 @@
+:root {
+  --site-ink: #edf3ef;
+  --site-ink-soft: #c6d0ca;
+  --site-paper: #0d1013;
+  --site-white: #14181c;
+  --site-line: #282e33;
+  --site-line-strong: #3b4349;
+  --site-muted: #879198;
+  --site-primary: #5ce3a1;
+  --site-primary-dark: #3bd38b;
+  --site-primary-soft: #182a21;
+  --site-blue: #76bce8;
+  --site-blue-soft: #172733;
+  --site-coral: #f28a72;
+  --site-coral-soft: #321d1a;
+  --site-amber: #e8b85e;
+  --site-shadow: 0 24px 64px rgba(0, 0, 0, .38);
+}
+
+body { background: var(--site-paper); }
+.public-page { background: radial-gradient(circle at 75% 0, rgba(55, 122, 91, .09), transparent 28%), var(--site-paper); }
+.site-header { border-color: rgba(47, 54, 59, .9); background: rgba(11, 14, 16, .88); }
+.site-header__inner { height: 64px; }
+.site-brand__logo { width: 29px; height: 29px; filter: brightness(1.2) saturate(.85); }
+.site-brand__edition { color: #626b72; font: 8px ui-monospace, monospace; text-transform: uppercase; }
+.site-nav { height: 38px; border-color: #2b3237; background: rgba(19, 23, 26, .8); }
+.site-nav a { height: 30px; padding: 0 12px; color: #7b858c; font-size: 10px; }
+.site-nav a:hover { color: #d8e1db; }.site-nav a.active { background: #1c2922; color: #82e7b3; }
+.site-console-link { min-height: 36px; border: 1px solid #55dda0; border-radius: 6px; background: #52e09d; color: #07130d; font-size: 10px; }.site-console-link:hover { background: #76edb5; }
+.site-menu-button { width: 36px; height: 36px; border-color: #343c42; background: #151a1d; color: #cbd4ce; }
+.site-mobile-menu { border-color: var(--site-line); background: #101417; }
+.site-mobile-menu .mobile-console { background: #50df9a; color: #07130d; }
+.site-kicker { color: #65dfa1; font: 9px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; }.site-kicker::before { height: 1px; }
+.site-page-head__meta span { border-color: var(--site-line); background: #14191c; color: #aeb8b1; }
+.site-cta-band { border: 1px solid #31513f; background: linear-gradient(110deg, #15251d, #101417); }.site-cta-band a, .site-cta-band button { background: #5be5a2; color: #07130d; }
+.site-footer { border-color: var(--site-line); background: #0a0d0f; }.site-footer__links a, .site-footer__bottom { border-color: var(--site-line); }
+
+/* Homepage: product-first, with the live console remaining visible in the first viewport. */
+.public-page.home-page .home-hero { min-height: min(720px, calc(100vh - 64px)); background: #0c1012 !important; }
+.public-page.home-page .home-hero::before { background: linear-gradient(90deg, #0c1012 0%, #0c1012 78%, rgba(12,16,18,.72) 100%) !important; }
+.public-page.home-page .home-hero::after { border-color: #323a40 !important; background-color: #14191d !important; box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(99,233,163,.04) !important; }
+.public-page.home-page .hero-copy h1 { color: #f4f7f5; font-size: 60px; }
+.public-page.home-page .hero-copy > p { color: #909ba2; }
+.public-page.home-page .hero-actions a { border-color: #3a4349; background: #151a1d; color: #cbd5cf; }.public-page.home-page .hero-actions a:first-child { border-color: #5be3a1; background: #56e19e; color: #07130d; }
+.public-page.home-page .hero-proof { color: #748087; }.public-page.home-page .hero-caption { border: 1px solid #343c42; background: rgba(15,19,21,.94); box-shadow: 0 16px 45px rgba(0,0,0,.42); }
+.public-page.home-page .trust-strip { border-color: var(--site-line); background: #111518 !important; }.public-page.home-page .trust-strip b { color: #859098; }
+.public-page.home-page .routing-section, .public-page.home-page .tool-section { background: #0f1315 !important; }
+.public-page.home-page .route-board { border-color: #353d43; background: #14191d !important; box-shadow: var(--site-shadow); }.public-page.home-page .route-request, .public-page.home-page .route-result { background: #101417 !important; }.public-page.home-page .route-main { border-color: #315842; background: #17271f !important; }.public-page.home-page .route-metrics p { background: #111719 !important; }.public-page.home-page .mode-tabs button { border-color: var(--site-line); }.public-page.home-page .mode-tabs button.active { background: #19291f !important; color: #78e6ad !important; }
+.public-page.home-page .workflow-story { background: #121b21 !important; }.public-page.home-page .story-steps { border-color: #2b3b45 !important; }.public-page.home-page .story-steps article { border-color: #2b3b45 !important; }.public-page.home-page .story-steps article > span { background: #1b2d39 !important; color: #8bc9ef !important; }.public-page.home-page .story-heading p, .public-page.home-page .story-steps p { color: #8295a2 !important; }
+.public-page.home-page .tool-code { border-color: #333b40 !important; background: #101417 !important; box-shadow: 14px 14px 0 #161e1a !important; }.public-page.home-page .code-top, .public-page.home-page .code-status { border-color: #30373c !important; background: #14191c !important; }.public-page.home-page .tool-code pre { color: #a8b5ad !important; }
+.public-page.home-page .expansion-section { background: #14150f !important; }.public-page.home-page .expansion-list a { border-color: #37382c !important; background: #171914 !important; }.public-page.home-page .expansion-list a:hover { background: #1e2119 !important; }.public-page.home-page .expansion-list a > .el-icon:first-child { background: #1d2e25 !important; color: #7ce5af !important; }
+.public-page.home-page .home-final { border-top: 1px solid #31513f; background: linear-gradient(110deg, #15271e, #0d1210) !important; }.public-page.home-page .home-final > a { background: #59e3a0 !important; color: #06120c !important; }
+
+/* Public content pages share the same developer-platform surfaces. */
+.public-page :is(article, .route-card, .model-card, .feature-card) { border-color: var(--site-line) !important; }
+.public-page :is(.scenario-grid, .model-grid, .feature-grid) article { background: #14191d !important; }
+.public-page :is(.scenario-grid, .model-grid, .feature-grid) article:hover { background: #18201c !important; }
+.public-page .docs-hero, .public-page .docs-toolbar, .public-page .docs-library { border-color: var(--site-line) !important; }
+.public-page .doc-grid article { border-color: var(--site-line) !important; background: #14191d !important; }.public-page .doc-grid article:hover { background: #18211d !important; }
+.public-page .doc-search { border-color: var(--site-line-strong) !important; background: #111518 !important; }.public-page .doc-search input { color: var(--site-ink) !important; }
+.public-page .doc-reader-shell { background: #0f1315 !important; }.public-page .reader-nav { border-color: var(--site-line) !important; background: #101417 !important; }.public-page .reader-nav nav button.active { background: #19271f !important; color: #7ae7ad !important; }.public-page .reader-content { border-color: var(--site-line) !important; background: #121619 !important; }.public-page .markdown-body :is(pre, code) { background: #0a0d0f !important; }
+
+/* Authentication is part of the product, not a disconnected light screen. */
+.auth-page { background: radial-gradient(circle at 28% 42%, rgba(54, 128, 94, .11), transparent 30%), #0d1013 !important; color: var(--site-ink) !important; }.auth-header { border-color: var(--site-line) !important; }.auth-context h1 { color: #f3f7f4; }.auth-context > p { color: var(--site-muted) !important; }.auth-page .context-preview { border-color: #313a40 !important; background: rgba(18,23,26,.86) !important; box-shadow: 12px 12px 0 #111914 !important; }.auth-page :is(.preview-head, .preview-metrics, .preview-task) { border-color: var(--site-line) !important; }.auth-page .task-icon { background: #1a3024 !important; color: #75e3aa !important; }.auth-page .task-icon.blue { background: #192b37 !important; color: #83c7ef !important; }
+.auth-page .auth-card { border-color: #343c42 !important; background: #13181b !important; box-shadow: 0 28px 70px rgba(0,0,0,.42) !important; }.auth-page .auth-mode { background: #0e1214 !important; }.auth-page .auth-mode button.active { background: #232a2e !important; color: #82e8b4 !important; box-shadow: inset 0 0 0 1px #35473e !important; }.auth-page .auth-form label > span { color: #8e999f !important; }.auth-page .auth-form label > div { border-color: #343c42 !important; background: #0e1214 !important; }.auth-page .auth-form input { color: var(--site-ink) !important; }.auth-page .auth-submit { background: #55e19d !important; color: #07130d !important; }.auth-page .demo-account, .auth-page .security-note { border-color: var(--site-line) !important; }
+
+@media (max-width: 720px) {
+  .public-page.home-page .home-hero::before { background: rgba(12,16,18,.92) !important; }
+  .public-page.home-page .hero-copy h1 { font-size: 42px; }
+}
