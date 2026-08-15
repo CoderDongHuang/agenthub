@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { ArrowRight, CircleCheck, Connection, Document, Operation, Plus, Refresh, Tools } from '@element-plus/icons-vue'
 import api from '../../api'
 
 const router = useRouter()
+const { locale } = useI18n()
 const loading = ref(false)
 const lastUpdated = ref<Date | null>(null)
 const overview = ref<any>({
@@ -41,7 +43,7 @@ const serviceNodes = computed(() => [
 ])
 
 function formatNumber(value: unknown) {
-  return new Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value || 0))
+  return new Intl.NumberFormat(locale.value, { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value || 0))
 }
 
 function formatCurrency(value: unknown) {

@@ -2,7 +2,10 @@
 import { computed, onMounted, ref } from 'vue'
 import { Check, CircleCheck, Connection, Plus, Promotion, SetUp, VideoPlay } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import { useI18n } from 'vue-i18n'
 import api from '../../api'
+
+const { locale } = useI18n()
 
 type NodeType = 'entry' | 'agent' | 'approval' | 'tool' | 'output'
 interface FlowNode { id: number; type: NodeType; title: string; detail: string; x: number; y: number; failurePolicy?: string; auditEnabled?: boolean }
@@ -113,9 +116,9 @@ onMounted(load)
     </div>
 
     <section class="workflow-summary">
-      <div><span class="summary-icon sage"><el-icon><Connection /></el-icon></span><strong>{{ workflow?.name || '流程编排' }}</strong><small>{{ nodes.length }} 个节点 · 配置持久化到工作区</small></div>
-      <div><span>预计耗时</span><strong>18 秒</strong><small>不含人工审批等待</small></div>
-      <div><span>风险节点</span><strong>1 个</strong><small>金额复核会暂停执行</small></div>
+      <div><span class="summary-icon sage"><el-icon><Connection /></el-icon></span><strong>{{ workflow?.name || '流程编排' }}</strong><small>{{ nodes.length }} {{ locale === 'en-US' ? 'nodes' : '个节点' }} · 配置持久化到工作区</small></div>
+      <div><span>预计耗时</span><strong>{{ locale === 'en-US' ? '18 sec' : '18 秒' }}</strong><small>不含人工审批等待</small></div>
+      <div><span>风险节点</span><strong>{{ locale === 'en-US' ? '1 node' : '1 个' }}</strong><small>金额复核会暂停执行</small></div>
       <div><span>最近执行</span><strong>{{ lastExecution?.status || '暂无' }}</strong><small>{{ lastExecution?.started_at || '尚未产生执行记录' }}</small></div>
     </section>
 
