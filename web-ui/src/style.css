@@ -1,11 +1,11 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body, #app { min-height: 100%; max-width: 100%; }
-html { color-scheme: light; }
-body { overflow-x: hidden; background: #f3f5f2; color: #27322d; font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+html { color-scheme: dark; }
+body { overflow-x: hidden; background: #0d1013; color: #e7ede9; font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
 button, input, textarea, select { letter-spacing: 0; }
 ::-webkit-scrollbar { width: 7px; height: 7px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { border-radius: 4px; background: #cbd4cd; }
+::-webkit-scrollbar-thumb { border-radius: 4px; background: #394147; }
 .el-card { background: #fff !important; border: 1px solid #dfe5df !important; border-radius: 8px !important; box-shadow: none !important; }
 .el-card__header { border-bottom: 1px solid #edf0ed !important; color: #27322d !important; font-weight: 650 !important; }
 .el-table { --el-table-bg-color: transparent !important; --el-table-tr-bg-color: transparent !important; --el-table-header-bg-color: #f5f7f4 !important; --el-table-border-color: #edf0ed !important; --el-table-text-color: #46534c !important; --el-table-header-text-color: #758078 !important; --el-table-row-hover-bg-color: #f7faf7 !important; }
