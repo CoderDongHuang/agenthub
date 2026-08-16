@@ -9,14 +9,17 @@ import org.springframework.stereotype.Service;
 import com.agenthub.common.config.TenantContext;
 
 import java.time.LocalDateTime;
+import com.agenthub.release.service.AgentVersionService;
 
 @Service
 public class AgentService {
 
     private final AgentDefinitionRepository agentRepository;
+    private final AgentVersionService versionService;
 
-    public AgentService(AgentDefinitionRepository agentRepository) {
+    public AgentService(AgentDefinitionRepository agentRepository, AgentVersionService versionService) {
         this.agentRepository = agentRepository;
+        this.versionService = versionService;
     }
 
     public AgentDefinition create(AgentCreateRequest request, Long userId) {
@@ -32,7 +35,11 @@ public class AgentService {
                 .createdBy(userId)
                 .tenantId(requireTenant())
                 .build();
-        return agentRepository.save(agent);
+        AgentDefinition saved = agentRepository.save(agent);
+        if (saved.getId() != null) {
+            versionService.snapshot(saved.getTenantId(), userId, saved.getId(), "Initial Agent draft");
+        }
+        return saved;
     }
 
     public Page<AgentDefinition> list(Pageable pageable) {
@@ -53,13 +60,20 @@ public class AgentService {
         if (request.getTemperature() != null) agent.setTemperature(request.getTemperature());
         if (request.getMaxTokens() != null) agent.setMaxTokens(request.getMaxTokens());
         if (request.getIcon() != null) agent.setIcon(request.getIcon());
-        return agentRepository.save(agent);
+        AgentDefinition saved = agentRepository.save(agent);
+        versionService.snapshot(requireTenant(), saved.getCreatedBy(), saved.getId(), "Agent definition updated");
+        return saved;
     }
 
     public AgentDefinition publish(Long id) {
         AgentDefinition agent = get(id);
+        java.util.Map<String, Object> version = versionService.snapshot(requireTenant(), agent.getCreatedBy(), id,
+                "Release candidate");
+        Long versionId = ((Number) version.get("id")).longValue();
+        versionService.release(requireTenant(), id, versionId, 100);
         agent.setStatus("published");
         agent.setPublishedAt(LocalDateTime.now());
+        agent.setCurrentVersionId(versionId);
         return agentRepository.save(agent);
     }
 

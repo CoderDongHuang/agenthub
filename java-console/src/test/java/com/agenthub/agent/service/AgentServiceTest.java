@@ -16,11 +16,13 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import com.agenthub.common.config.TenantContext;
+import com.agenthub.release.service.AgentVersionService;
 
 @ExtendWith(MockitoExtension.class)
 class AgentServiceTest {
 
     @Mock AgentDefinitionRepository agentRepository;
+    @Mock AgentVersionService versionService;
     @InjectMocks AgentService agentService;
 
     @BeforeEach
@@ -55,9 +57,12 @@ class AgentServiceTest {
                 .systemPrompt("p").model("m").build();
         when(agentRepository.findByIdAndTenantId(1L, 7L)).thenReturn(Optional.of(agent));
         when(agentRepository.save(any())).thenReturn(agent);
+        when(versionService.snapshot(7L, null, 1L, "Release candidate")).thenReturn(java.util.Map.of("id", 11L));
 
         AgentDefinition result = agentService.publish(1L);
         assertEquals("published", result.getStatus());
+        assertEquals(11L, result.getCurrentVersionId());
+        verify(versionService).release(7L, 1L, 11L, 100);
     }
 
     @Test

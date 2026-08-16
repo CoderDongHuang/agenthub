@@ -82,7 +82,7 @@ public class KnowledgeBaseController {
     public ApiResponse<List<Map<String, Object>>> listDocs(@RequestParam(defaultValue = "1") Long kbId) {
         return ApiResponse.ok(jdbc.queryForList(
                 "SELECT doc.id, doc.kb_id, doc.filename, doc.file_type, doc.file_size, doc.chunk_count, " +
-                        "doc.status, doc.created_at " +
+                        "doc.status, doc.source_id, doc.external_id, doc.source_version, doc.inherited_acl, doc.created_at " +
                 "FROM knowledge_document doc JOIN knowledge_base kb ON kb.id = doc.kb_id " +
                         "WHERE doc.kb_id = ? AND kb.tenant_id = ? ORDER BY doc.created_at DESC",
                 kbId, tenantId()
@@ -92,7 +92,7 @@ public class KnowledgeBaseController {
     @GetMapping("/docs/chunks")
     public ApiResponse<List<Map<String, Object>>> listChunks() {
         return ApiResponse.ok(jdbc.queryForList(
-                "SELECT kb.tenant_id, chunk.doc_id, chunk.chunk_index, chunk.content FROM knowledge_chunk chunk " +
+                "SELECT kb.tenant_id, chunk.doc_id, chunk.chunk_index, chunk.content, chunk.citation FROM knowledge_chunk chunk " +
                         "JOIN knowledge_document doc ON doc.id = chunk.doc_id JOIN knowledge_base kb ON kb.id = doc.kb_id " +
                         "WHERE kb.tenant_id = ? ORDER BY chunk.doc_id, chunk.chunk_index", tenantId()
         ));
@@ -116,14 +116,16 @@ public class KnowledgeBaseController {
             return ApiResponse.error(400, "chunks must be an array");
         }
         requireDocument(id);
+        String filename = jdbc.queryForObject("SELECT filename FROM knowledge_document WHERE id=?", String.class, id);
         jdbc.update("DELETE FROM knowledge_chunk WHERE doc_id = ?", id);
         int index = 0;
         for (Object chunk : chunks) {
             String content = String.valueOf(chunk).trim();
             if (!content.isBlank()) {
                 jdbc.update(
-                        "INSERT INTO knowledge_chunk (doc_id, chunk_index, content) VALUES (?,?,?)",
-                        id, index++, content
+                        "INSERT INTO knowledge_chunk (doc_id, chunk_index, content, citation) " +
+                                "VALUES (?,?,?,jsonb_build_object('documentId',?,'filename',?,'chunkIndex',?))",
+                        id, index, content, id, filename, index++
                 );
             }
         }

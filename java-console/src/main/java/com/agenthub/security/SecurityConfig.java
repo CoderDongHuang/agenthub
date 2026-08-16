@@ -49,6 +49,7 @@ public class SecurityConfig {
                 .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                 .ignoringRequestMatchers(
                     "/api/v1/**", "/api/internal/**", "/api/channel/**",
+                    "/api/hooks/**",
                     "/api/approvals/create", "/api/tools/register",
                     "/api/knowledge/docs/chunks", "/api/knowledge/docs/*/chunks"))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -65,6 +66,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/auth/csrf").permitAll()
                 .requestMatchers("/api/health").permitAll()
                 .requestMatchers("/api/channel/**").permitAll()
+                .requestMatchers("/api/hooks/workflows/**").permitAll()
                 .requestMatchers("/api/v1/**").permitAll()           // API Key 认证
                 .requestMatchers("/api-docs/**", "/swagger-ui/**").permitAll()
                 .requestMatchers("/api/internal/**", "/api/approvals/create", "/api/tools/register")
@@ -85,7 +87,8 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(allowedOrigins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-API-Key", "X-XSRF-TOKEN"));
+        config.setAllowedHeaders(List.of(
+                "Authorization", "Content-Type", "X-API-Key", "X-XSRF-TOKEN", "X-Workflow-Secret"));
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);
 
