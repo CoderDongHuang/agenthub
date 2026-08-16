@@ -130,7 +130,7 @@ public class WorkspaceResourceController {
             String stepStatus = switch (nodeType) {
                 case "entry", "output", "branch" -> "completed";
                 case "approval" -> "waiting_for_approval";
-                case "agent", "tool" -> "queued";
+                case "agent", "tool", "subflow" -> "queued";
                 default -> "failed";
             };
             steps.add(Map.of(

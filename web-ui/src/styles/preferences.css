@@ -103,6 +103,14 @@ html[data-theme='light'] .console-page :is(.status-banner, .guardrail-hero > div
 html[data-theme='light'] .workflow-page .canvas-grid { background-color: #eef2f7 !important; background-image: radial-gradient(#c5ceda 1px, transparent 1px) !important; }
 html[data-theme='light'] .operations-page .status-actions button { border-color: var(--cyber-line-strong) !important; background: var(--cyber-panel-solid) !important; color: var(--cyber-text) !important; }
 html[data-theme='light'] .console-page :is(input, textarea, select):not([type='range']) { background: #fff !important; color: var(--cyber-text) !important; }
+html[data-theme='light'] .release-page { color: var(--cyber-text-soft) !important; }
+html[data-theme='light'] .release-page :is(.ops-summary, .ops-band, .diff-panel, .span-view, .dataset-grid article, .route-decision, .knowledge-eval) { border-color: var(--cyber-line-strong) !important; background: var(--cyber-panel-solid) !important; color: var(--cyber-text-soft) !important; }
+html[data-theme='light'] .release-page :is(.ops-summary strong, .ops-band h2, .ops-band h3, .table-row > strong, .dataset-grid strong, .trace-list strong, .trace-meta strong, .endpoint-list strong, .source-list strong, .workflow-columns strong, .check-list strong) { color: var(--cyber-text) !important; }
+html[data-theme='light'] .release-page :is(.table-row, .table-head, .trace-list > button, .endpoint-list article, .source-list article, .workflow-columns article, .check-list article, .ops-tabs) { border-color: var(--cyber-line) !important; }
+html[data-theme='light'] .release-page :is(.row-actions button, .endpoint-list button, .knowledge-eval input) { border-color: var(--cyber-line-strong) !important; background: #fff !important; color: var(--cyber-text-soft) !important; }
+html[data-theme='light'] .release-page .trace-list > button:hover,
+html[data-theme='light'] .release-page .trace-list > button.selected { background: #eef8f2 !important; }
+html[data-theme='light'] .release-page .ops-tabs button.active { background: #e8f7ef !important; color: #17684a !important; }
 html[data-theme='light'] .el-table {
   --el-table-bg-color: transparent !important;
   --el-table-tr-bg-color: transparent !important;

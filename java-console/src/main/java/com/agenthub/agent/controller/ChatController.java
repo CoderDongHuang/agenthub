@@ -14,7 +14,11 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Map;
 import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.UUID;
+import java.time.Instant;
+import java.math.BigDecimal;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
@@ -25,6 +29,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import com.agenthub.security.CurrentUser;
 import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Value;
+import com.agenthub.release.service.AgentVersionService;
+import com.agenthub.routing.service.ModelRoutingService;
+import com.agenthub.observability.service.TraceService;
 
 @RestController
 @RequestMapping("/api/agents")
@@ -35,15 +42,23 @@ public class ChatController {
     private final AuditService auditService;
     private final ExecutorService executor;
     private final CurrentUser currentUser;
+    private final AgentVersionService versionService;
+    private final ModelRoutingService routingService;
+    private final TraceService traceService;
 
     public ChatController(PythonAgentClient pythonAgentClient, AuditService auditService,
                           JdbcTemplate jdbcTemplate, CurrentUser currentUser,
+                          AgentVersionService versionService, ModelRoutingService routingService,
+                          TraceService traceService,
                           @Value("${agenthub.chat.max-concurrency:16}") int maxConcurrency,
                           @Value("${agenthub.chat.queue-capacity:64}") int queueCapacity) {
         this.pythonAgentClient = pythonAgentClient;
         this.auditService = auditService;
         this.jdbcTemplate = jdbcTemplate;
         this.currentUser = currentUser;
+        this.versionService = versionService;
+        this.routingService = routingService;
+        this.traceService = traceService;
         this.executor = new ThreadPoolExecutor(
                 maxConcurrency, maxConcurrency, 0L, TimeUnit.MILLISECONDS,
                 new ArrayBlockingQueue<>(queueCapacity),
@@ -58,8 +73,18 @@ public class ChatController {
         String message = body.get("message");
         String sessionId = body.getOrDefault("sessionId", UUID.randomUUID().toString());
         String userId = String.valueOf(currentUser.userId());
-        String tenantId = String.valueOf(currentUser.tenantId());
-        String model = requireAgentModel(agentId, currentUser.tenantId());
+        Long tenantNumber = currentUser.tenantId();
+        String tenantId = String.valueOf(tenantNumber);
+        AgentVersionService.ResolvedVersion version = versionService.resolve(
+                currentUser.tenantId(), agentId, sessionId);
+        String preferredModel = String.valueOf(version.config().getOrDefault("model",
+                requireAgentModel(agentId, currentUser.tenantId())));
+        ModelRoutingService.RouteDecision route = routingService.route(
+                currentUser.tenantId(), preferredModel, routingConstraints(body));
+        String model = route.model();
+        Instant traceStarted = Instant.now();
+        UUID traceId = traceService.start(currentUser.tenantId(), sessionId, agentId, version.id(), model,
+                route.reason(), message);
 
         SseEmitter emitter = new SseEmitter(300_000L); // 5 分钟超时
 
@@ -70,11 +95,14 @@ public class ChatController {
                 .setTenantId(tenantId)
                 .setMessage(message)
                 .setChannel("web")
+                .putAllVariables(runtimeOverrides(version, route, traceId))
                 .build();
 
         StringBuffer outputText = new StringBuffer();
         AtomicBoolean executionFailed = new AtomicBoolean(false);
         AtomicBoolean auditRecorded = new AtomicBoolean(false);
+        AtomicBoolean traceRecorded = new AtomicBoolean(false);
+        Map<String, Instant> activeToolSpans = new ConcurrentHashMap<>();
         try {
             executor.submit(() -> {
             pythonAgentClient.executeAgent(
@@ -93,6 +121,17 @@ public class ChatController {
                                         agentId, sessionId, data);
                                 data = "Agent 执行失败，请检查模型配置或稍后重试。";
                             }
+                            if (response.getType() == ExecutionResponse.Type.TOOL_START) {
+                                activeToolSpans.put(response.getToolName(), Instant.now());
+                            } else if (response.getType() == ExecutionResponse.Type.TOOL_END) {
+                                Instant started = activeToolSpans.remove(response.getToolName());
+                                traceService.addSpan(traceId, "tool", response.getToolName(), "completed", Map.of(),
+                                        Map.of("content", data == null ? "" : data), Map.of(),
+                                        started == null ? 0 : traceService.elapsedMillis(started));
+                            } else if (response.getType() == ExecutionResponse.Type.APPROVAL_WAIT) {
+                                traceService.addSpan(traceId, "approval", response.getToolName(), "waiting", Map.of(),
+                                        Map.of("message", data == null ? "" : data), Map.of(), 0);
+                            }
                             Map<String, Object> payload = new LinkedHashMap<>();
                             payload.put("content", data != null ? data : "");
                             payload.put("toolName", response.getToolName());
@@ -110,7 +149,9 @@ public class ChatController {
                     // onError
                     error -> {
                         executionFailed.set(true);
+                        reportRouteHealth(tenantNumber, route.endpointId(), false, traceService.elapsedMillis(traceStarted), error.getMessage());
                         recordExecutionAudit(auditRecorded, agentId, userId, tenantId, message, "failed");
+                        completeTrace(traceRecorded, traceId, "failed", message, outputText, traceStarted);
                         try {
                             emitter.send(SseEmitter.event()
                                     .name("error")
@@ -125,7 +166,14 @@ public class ChatController {
                         String result = executionFailed.get() ? "failed" : "success";
                         recordExecutionAudit(auditRecorded, agentId, userId, tenantId, message, result);
                         if (!executionFailed.get()) {
-                            recordTokenUsage(agentId, sessionId, userId, tenantId, model, message, outputText);
+                            reportRouteHealth(tenantNumber, route.endpointId(), true, traceService.elapsedMillis(traceStarted), null);
+                            Usage usage = recordTokenUsage(agentId, sessionId, userId, tenantId, model, message, outputText);
+                            if (traceRecorded.compareAndSet(false, true)) {
+                                traceService.complete(traceId, "success", usage.inputTokens(), usage.outputTokens(),
+                                        usage.cost(), traceService.elapsedMillis(traceStarted), outputText.toString());
+                            }
+                        } else {
+                            completeTrace(traceRecorded, traceId, "failed", message, outputText, traceStarted);
                         }
                         try {
                             emitter.send(SseEmitter.event().name("done")
@@ -138,6 +186,7 @@ public class ChatController {
             );
             });
         } catch (RejectedExecutionException exception) {
+            completeTrace(traceRecorded, traceId, "failed", message, outputText, traceStarted);
             emitter.completeWithError(new IllegalStateException("Agent execution capacity is temporarily exhausted"));
         }
 
@@ -154,8 +203,17 @@ public class ChatController {
         String message = body.get("message");
         String sessionId = UUID.randomUUID().toString();
         String userId = String.valueOf(currentUser.userId());
-        String tenantId = String.valueOf(currentUser.tenantId());
-        requireAgentModel(agentId, currentUser.tenantId());
+        Long tenantNumber = currentUser.tenantId();
+        String tenantId = String.valueOf(tenantNumber);
+        AgentVersionService.ResolvedVersion version = versionService.resolve(
+                currentUser.tenantId(), agentId, sessionId);
+        String preferredModel = String.valueOf(version.config().getOrDefault("model",
+                requireAgentModel(agentId, currentUser.tenantId())));
+        ModelRoutingService.RouteDecision route = routingService.route(currentUser.tenantId(), preferredModel,
+                routingConstraints(body));
+        Instant traceStarted = Instant.now();
+        UUID traceId = traceService.start(currentUser.tenantId(), sessionId, agentId, version.id(), route.model(),
+                route.reason(), message);
 
         StringBuilder fullText = new StringBuilder();
         AtomicReference<String> executionError = new AtomicReference<>();
@@ -167,6 +225,7 @@ public class ChatController {
                 .setTenantId(tenantId)
                 .setMessage(message)
                 .setChannel("web")
+                .putAllVariables(runtimeOverrides(version, route, traceId))
                 .build();
 
         pythonAgentClient.executeAgent(
@@ -186,8 +245,16 @@ public class ChatController {
         );
 
         if (executionError.get() != null) {
+            reportRouteHealth(tenantNumber, route.endpointId(), false, traceService.elapsedMillis(traceStarted), executionError.get());
+            traceService.complete(traceId, "failed", tokenEstimate(message), tokenEstimate(fullText), BigDecimal.ZERO,
+                    traceService.elapsedMillis(traceStarted), fullText.toString());
             throw new IllegalStateException("Agent execution failed");
         }
+
+        Usage usage = recordTokenUsage(agentId, sessionId, userId, tenantId, route.model(), message, fullText);
+        reportRouteHealth(tenantNumber, route.endpointId(), true, traceService.elapsedMillis(traceStarted), null);
+        traceService.complete(traceId, "success", usage.inputTokens(), usage.outputTokens(), usage.cost(),
+                traceService.elapsedMillis(traceStarted), fullText.toString());
 
         return ApiResponse.ok(Map.of(
                 "sessionId", sessionId,
@@ -212,11 +279,11 @@ public class ChatController {
         }
     }
 
-    private void recordTokenUsage(Long agentId, String sessionId, String userId, String tenantId,
+    private Usage recordTokenUsage(Long agentId, String sessionId, String userId, String tenantId,
                                   String model, String message, CharSequence outputText) {
-        int inputTokens = message.length() / 3 + 1;
-        int outputTokens = outputText.length() / 3 + 1;
-        double cost = (inputTokens + outputTokens) * 0.000002;
+        int inputTokens = tokenEstimate(message);
+        int outputTokens = tokenEstimate(outputText);
+        BigDecimal cost = BigDecimal.valueOf((inputTokens + outputTokens) * 0.000002);
         try {
             jdbcTemplate.update(
                     "INSERT INTO token_usage (tenant_id, agent_id, session_id, user_id, model, input_tokens, output_tokens, cost) " +
@@ -227,5 +294,56 @@ public class ChatController {
         } catch (Exception exception) {
             log.warn("Token usage persistence failed: agentId={}, sessionId={}", agentId, sessionId, exception);
         }
+        return new Usage(inputTokens, outputTokens, cost);
     }
+
+    private Map<String, String> runtimeOverrides(AgentVersionService.ResolvedVersion version,
+                                                  ModelRoutingService.RouteDecision route, UUID traceId) {
+        Map<String, String> variables = new HashMap<>();
+        variables.put("model_override", route.model());
+        variables.put("route_reason", route.reason());
+        variables.put("trace_id", traceId.toString());
+        variables.put("agent_version", String.valueOf(version.version()));
+        putIfPresent(variables, "agent_name_override", version.config().get("name"));
+        putIfPresent(variables, "system_prompt_override", version.config().get("systemPrompt"));
+        putIfPresent(variables, "temperature_override", version.config().get("temperature"));
+        putIfPresent(variables, "max_tokens_override", version.config().get("maxTokens"));
+        return variables;
+    }
+
+    private Map<String, Object> routingConstraints(Map<String, String> body) {
+        Map<String, Object> constraints = new HashMap<>();
+        for (String key : new String[]{"region", "maxCostPer1k", "minQuality", "maxLatencyMs"}) {
+            String value = body.get(key);
+            if (value != null && !value.isBlank()) constraints.put(key, value);
+        }
+        return constraints;
+    }
+
+    private void putIfPresent(Map<String, String> values, String key, Object value) {
+        if (value != null && !String.valueOf(value).isBlank()) values.put(key, String.valueOf(value));
+    }
+
+    private void completeTrace(AtomicBoolean recorded, UUID traceId, String status, String message,
+                               CharSequence output, Instant started) {
+        if (recorded.compareAndSet(false, true)) {
+            traceService.complete(traceId, status, tokenEstimate(message), tokenEstimate(output), BigDecimal.ZERO,
+                    traceService.elapsedMillis(started), output.toString());
+        }
+    }
+
+    private int tokenEstimate(CharSequence value) {
+        return value == null ? 0 : value.length() / 3 + 1;
+    }
+
+    private void reportRouteHealth(Long tenantId, Long endpointId, boolean success, long latencyMs, String error) {
+        if (endpointId == null) return;
+        try {
+            routingService.report(tenantId, endpointId, success, latencyMs, error);
+        } catch (Exception exception) {
+            log.warn("Model endpoint health report failed: endpointId={}", endpointId, exception);
+        }
+    }
+
+    private record Usage(int inputTokens, int outputTokens, BigDecimal cost) {}
 }

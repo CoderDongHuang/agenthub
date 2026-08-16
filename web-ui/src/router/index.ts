@@ -4,7 +4,7 @@ import { useAuthStore } from '../stores/auth'
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    ...['dashboard', 'agents', 'users', 'approvals', 'audit', 'tools', 'knowledge', 'workflows', 'guardrails', 'analytics', 'channels']
+    ...['dashboard', 'agents', 'users', 'approvals', 'audit', 'tools', 'knowledge', 'workflows', 'guardrails', 'analytics', 'channels', 'operations']
       .map(path => ({ path: `/${path}`, redirect: `/console/${path}` })),
     // 首页（公开）
     {
@@ -138,6 +138,12 @@ const router = createRouter({
           name: 'Channels',
           component: () => import('../views/channels/ChannelCenterView.vue'),
           meta: { title: '渠道接入' },
+        },
+        {
+          path: 'operations',
+          name: 'Operations',
+          component: () => import('../views/operations/ReleaseOperationsView.vue'),
+          meta: { title: '发布与运行中心' },
         },
       ],
     },

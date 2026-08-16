@@ -88,6 +88,8 @@ class AgentEngine:
 
             # 2. 加载 Agent 配置（Phase 1: 使用硬编码配置，后续从 Java 获取）
             agent_config = await self._load_agent_config(request.agent_id, request.tenant_id)
+            runtime_variables = dict(request.variables)
+            agent_config = self._apply_runtime_overrides(agent_config, runtime_variables)
 
             # 3. 获取 LLM 并绑定工具
             tool_schemas = self.tool_executor.get_json_schemas()
@@ -286,7 +288,7 @@ class AgentEngine:
         """
         default_config = {
             "name": f"Agent {agent_id}",
-            "model": "deepseek-chat",
+            "model": "deepseek-v4-flash",
             "system_prompt": "你是一个有用的 AI 助手。你可以使用提供的工具来帮助用户。",
             "temperature": 0.7,
             "max_tokens": 4096,
@@ -313,6 +315,30 @@ class AgentEngine:
             log.warning(f"无法从 Java 加载 Agent 配置: {e}，使用默认配置")
 
         return default_config
+
+    def _apply_runtime_overrides(self, config: Dict[str, Any], variables: Dict[str, str]) -> Dict[str, Any]:
+        """Apply the version and routing decision made by the Java control plane."""
+        resolved = dict(config)
+        mappings = {
+            "model_override": "model",
+            "agent_name_override": "name",
+            "system_prompt_override": "system_prompt",
+        }
+        for source, target in mappings.items():
+            value = variables.get(source)
+            if value:
+                resolved[target] = value
+        try:
+            if variables.get("temperature_override"):
+                resolved["temperature"] = float(variables["temperature_override"])
+            if variables.get("max_tokens_override"):
+                resolved["max_tokens"] = int(variables["max_tokens_override"])
+        except (TypeError, ValueError):
+            log.warning("Ignoring invalid numeric Agent runtime override")
+        resolved["agent_version"] = variables.get("agent_version", "0")
+        resolved["trace_id"] = variables.get("trace_id", "")
+        resolved["route_reason"] = variables.get("route_reason", "")
+        return resolved
 
     async def _create_approval(self, session_id: str, agent_id: str, tool_name: str,
                                 user_id: str, context: str, risk_level: str, tenant_id: str) -> str:

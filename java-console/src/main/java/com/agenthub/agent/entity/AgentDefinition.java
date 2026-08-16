@@ -55,6 +55,9 @@ public class AgentDefinition {
     @Column(name = "published_at")
     private LocalDateTime publishedAt;
 
+    @Column(name = "current_version_id")
+    private Long currentVersionId;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

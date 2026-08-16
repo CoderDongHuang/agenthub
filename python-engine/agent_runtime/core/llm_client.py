@@ -84,8 +84,8 @@ MODEL_CATALOG = [
     {"id": "gpt-4o", "provider": "openai", "key_env": "OPENAI_API_KEY", "base_url": None, "context_window": 128000, "streaming": True, "tools": True},
     {"id": "gpt-4o-mini", "provider": "openai", "key_env": "OPENAI_API_KEY", "base_url": None, "context_window": 128000, "streaming": True, "tools": True},
     {"id": "claude-sonnet-4-5", "provider": "anthropic", "key_env": "ANTHROPIC_API_KEY", "base_url": None, "context_window": 200000, "streaming": True, "tools": True},
-    {"id": "deepseek-chat", "provider": "deepseek", "key_env": "DEEPSEEK_API_KEY", "base_url": "https://api.deepseek.com/v1", "context_window": 128000, "streaming": True, "tools": True},
-    {"id": "deepseek-reasoner", "provider": "deepseek", "key_env": "DEEPSEEK_API_KEY", "base_url": "https://api.deepseek.com/v1", "context_window": 128000, "streaming": True, "tools": False},
+    {"id": "deepseek-v4-flash", "provider": "deepseek", "key_env": "DEEPSEEK_API_KEY", "base_url": "https://api.deepseek.com/v1", "context_window": 128000, "streaming": True, "tools": True},
+    {"id": "deepseek-v4-pro", "provider": "deepseek", "key_env": "DEEPSEEK_API_KEY", "base_url": "https://api.deepseek.com/v1", "context_window": 128000, "streaming": True, "tools": True},
     {"id": "qwen-plus", "provider": "qwen", "key_env": "DASHSCOPE_API_KEY", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "context_window": 131072, "streaming": True, "tools": True},
     {"id": "qwen-turbo", "provider": "qwen", "key_env": "DASHSCOPE_API_KEY", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "context_window": 1000000, "streaming": True, "tools": True},
     {"id": "moonshot-v1-32k", "provider": "moonshot", "key_env": "MOONSHOT_API_KEY", "base_url": "https://api.moonshot.cn/v1", "context_window": 32000, "streaming": True, "tools": True},
@@ -213,7 +213,7 @@ class LLMClient:
         if not api_key:
             log.warning(f"Missing {key_env} for model {model_name}")
 
-        # DeepSeek API ID 直接传，不用映射（deepseek-chat 已废弃）
+        # Supplier model IDs are passed through unchanged.
         kwargs = dict(
             model=model_name,
             temperature=temperature,

@@ -51,7 +51,7 @@ POST   /api/agents/{id}/chat
   "name": "合同审阅助手",
   "description": "定位合同风险并给出修改建议",
   "systemPrompt": "只依据合同原文回答，并标注条款位置。",
-  "model": "deepseek-chat",
+  "model": "deepseek-v4-flash",
   "temperature": 0.2,
   "maxTokens": 4096
 }
