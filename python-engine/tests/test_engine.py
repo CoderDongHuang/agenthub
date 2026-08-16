@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agent_runtime.core.engine import AgentEngine, get_retriever
-from agent_runtime.core.llm_client import LLMClient, has_any_api_key
+from agent_runtime.core.llm_client import LLMClient, get_provider_status, has_any_api_key
 from agent_runtime.core.tool_executor import ToolExecutor
 from agent_runtime.core.session_manager import SessionManager
 from agent_runtime.grpc_client import agent_hub_pb2
@@ -89,6 +89,36 @@ def test_llm_client_model_map():
     client = LLMClient()
     # 不传 API Key 也能创建 client 对象
     assert client is not None
+
+
+def test_deepseek_catalog_uses_supplier_model_ids():
+    model_ids = {item["id"] for item in get_provider_status()["models"]}
+    assert "deepseek-v4-flash" in model_ids
+    assert "deepseek-v4-pro" in model_ids
+    assert "deepseek-chat" not in model_ids
+    assert "deepseek-reasoner" not in model_ids
+
+
+def test_runtime_overrides_apply_version_and_routing_decisions():
+    engine = AgentEngine(LLMClient(), ToolExecutor(), InMemorySessionManager())
+    resolved = engine._apply_runtime_overrides(
+        {"name": "Stable", "model": "deepseek-v4-flash", "system_prompt": "stable", "temperature": 0.7, "max_tokens": 4096},
+        {
+            "agent_name_override": "Canary",
+            "model_override": "gpt-4o-mini",
+            "system_prompt_override": "canary prompt",
+            "temperature_override": "0.2",
+            "max_tokens_override": "1024",
+            "agent_version": "3",
+            "trace_id": "trace-1",
+        },
+    )
+    assert resolved["name"] == "Canary"
+    assert resolved["model"] == "gpt-4o-mini"
+    assert resolved["system_prompt"] == "canary prompt"
+    assert resolved["temperature"] == 0.2
+    assert resolved["max_tokens"] == 1024
+    assert resolved["agent_version"] == "3"
 
 
 if __name__ == "__main__":
