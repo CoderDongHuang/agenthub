@@ -37,6 +37,7 @@ const groupsZh = [
     { path: '/console/tools', title: '工具与插件', hint: '运行时能力目录', icon: Tools },
   ] },
   { label: '运营', items: [
+    { path: '/console/operations', title: '发布与运行', hint: '版本、评测、Trace 与诊断', icon: Operation },
     { path: '/console/channels', title: '渠道接入', hint: '消息与 API 分发', icon: Connection },
     { path: '/console/analytics', title: '用量分析', hint: 'Token、延迟与成本', icon: DataAnalysis },
   ] },
@@ -56,6 +57,7 @@ const groupsEn = [
     { path: '/console/tools', title: 'Tools & Plugins', hint: 'Runtime capability catalog', icon: Tools },
   ] },
   { label: 'OPERATE', items: [
+    { path: '/console/operations', title: 'Release & Runtime', hint: 'Versions, evals, traces and diagnostics', icon: Operation },
     { path: '/console/channels', title: 'Channels', hint: 'Message and API delivery', icon: Connection },
     { path: '/console/analytics', title: 'Analytics', hint: 'Tokens, latency and cost', icon: DataAnalysis },
   ] },

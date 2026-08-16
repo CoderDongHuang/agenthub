@@ -15,6 +15,7 @@ const englishTitles: Record<string, string> = {
   AgentChat: 'Agent Chat', AgentDetail: 'Agent Details', Users: 'User Management', Approvals: 'Approval Center',
   Audit: 'Audit Log', Tools: 'Tool Market', Knowledge: 'Knowledge Base', Workflows: 'Workflow Studio',
   Guardrails: 'Guardrails', Analytics: 'Usage Analytics', Channels: 'Channel Integrations', NotFound: 'Page Not Found',
+  Operations: 'Release & Runtime Center',
 }
 
 watchEffect(() => {
