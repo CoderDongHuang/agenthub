@@ -12,6 +12,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.authentication.session.NullAuthenticatedSessionStrategy;
+import org.springframework.security.web.session.SessionManagementFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.config.Customizer;
 import org.springframework.http.HttpMethod;
@@ -47,12 +49,15 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf
                 .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
                 .ignoringRequestMatchers(
                     "/api/v1/**", "/api/internal/**", "/api/channel/**",
                     "/api/hooks/**",
                     "/api/approvals/create", "/api/tools/register",
                     "/api/knowledge/docs/chunks", "/api/knowledge/docs/*/chunks"))
-            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .sessionManagement(session -> session
+                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                .sessionAuthenticationStrategy(new NullAuthenticatedSessionStrategy()))
             .headers(headers -> headers
                 .contentSecurityPolicy(csp -> csp.policyDirectives(
                     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
@@ -71,13 +76,13 @@ public class SecurityConfig {
                 .requestMatchers("/api-docs/**", "/swagger-ui/**").permitAll()
                 .requestMatchers("/api/internal/**", "/api/approvals/create", "/api/tools/register")
                     .hasRole("INTERNAL")
-                .requestMatchers("/api/users/**", "/api/tenants/**").hasRole("ADMIN")
+                .requestMatchers("/api/users/**", "/api/tenants/**", "/api/governance/**").hasRole("ADMIN")
                 // 需要认证
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().denyAll()
             )
             .addFilterBefore(internalAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+            .addFilterAfter(jwtAuthenticationFilter, SessionManagementFilter.class);
 
         return http.build();
     }

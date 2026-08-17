@@ -16,6 +16,7 @@ const englishTitles: Record<string, string> = {
   Audit: 'Audit Log', Tools: 'Tool Market', Knowledge: 'Knowledge Base', Workflows: 'Workflow Studio',
   Guardrails: 'Guardrails', Analytics: 'Usage Analytics', Channels: 'Channel Integrations', NotFound: 'Page Not Found',
   Operations: 'Release & Runtime Center',
+  EnterpriseGovernance: 'Enterprise Governance',
 }
 
 watchEffect(() => {
