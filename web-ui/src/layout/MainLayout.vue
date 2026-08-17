@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
   ArrowLeft, ArrowRight, Bell, CircleCheck, Collection, Connection,
-  DataAnalysis, Document, House, Lock, Menu, Operation, Search,
+  DataAnalysis, Document, House, Lock, Menu, Operation, Search, OfficeBuilding,
   Share, SwitchButton, Tools, User, Close, TopRight, Promotion,
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
@@ -42,6 +42,7 @@ const groupsZh = [
     { path: '/console/analytics', title: '用量分析', hint: 'Token、延迟与成本', icon: DataAnalysis },
   ] },
   { label: '治理', items: [
+    { path: '/console/governance', title: '企业治理', hint: '身份、密钥、合规与恢复', icon: OfficeBuilding },
     { path: '/console/guardrails', title: '安全护栏', hint: '输入输出策略', icon: Lock },
     { path: '/console/approvals', title: '审批中心', hint: '高风险动作卡点', icon: CircleCheck, badge: true },
     { path: '/console/audit', title: '审计记录', hint: '全链路追溯', icon: Document },
@@ -62,6 +63,7 @@ const groupsEn = [
     { path: '/console/analytics', title: 'Analytics', hint: 'Tokens, latency and cost', icon: DataAnalysis },
   ] },
   { label: 'GOVERN', items: [
+    { path: '/console/governance', title: 'Enterprise Governance', hint: 'Identity, keys, compliance and recovery', icon: OfficeBuilding },
     { path: '/console/guardrails', title: 'Guardrails', hint: 'Input and output policies', icon: Lock },
     { path: '/console/approvals', title: 'Approvals', hint: 'High-risk action gates', icon: CircleCheck, badge: true },
     { path: '/console/audit', title: 'Audit Log', hint: 'End-to-end traceability', icon: Document },
@@ -81,6 +83,7 @@ const englishPageTitles: Record<string, string> = {
   Users: 'User Management', Approvals: 'Approval Center', Audit: 'Audit Log', Tools: 'Tool Market',
   Knowledge: 'Knowledge Base', Workflows: 'Workflow Studio', Guardrails: 'Guardrails',
   Analytics: 'Usage Analytics', Channels: 'Channel Integrations',
+  EnterpriseGovernance: 'Enterprise Governance', Operations: 'Release & Runtime Center',
 }
 const pageTitle = computed(() => locale.value === 'en-US'
   ? englishPageTitles[String(route.name)] || 'AgentHub'

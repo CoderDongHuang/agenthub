@@ -4,8 +4,7 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
   timeout: 30000,
   withCredentials: true,
-  // Spring Security returns a masked token; do not overwrite it with the raw cookie value.
-  xsrfCookieName: '',
+  xsrfCookieName: 'XSRF-TOKEN',
   xsrfHeaderName: 'X-XSRF-TOKEN',
   headers: {
     'Content-Type': 'application/json',
@@ -21,7 +20,9 @@ async function getCsrfToken() {
   if (!csrfRequest) {
     csrfRequest = (api.get('/auth/csrf') as Promise<any>)
       .then(response => {
-        csrfToken = response.data?.token || ''
+        const cookieToken = document.cookie.split('; ')
+          .find(item => item.startsWith('XSRF-TOKEN='))?.split('=').slice(1).join('=') || ''
+        csrfToken = cookieToken ? decodeURIComponent(cookieToken) : response.data?.token || ''
         if (!csrfToken) throw new Error('CSRF token is unavailable')
         return csrfToken
       })
