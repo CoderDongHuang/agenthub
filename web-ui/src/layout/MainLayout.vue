@@ -35,6 +35,7 @@ const groupsZh = [
     { path: '/console/workflows', title: '流程编排', hint: '多 Agent 工作流', icon: Share },
     { path: '/console/knowledge', title: '知识库', hint: 'RAG 数据资产', icon: Collection },
     { path: '/console/tools', title: '工具与插件', hint: '运行时能力目录', icon: Tools },
+    { path: '/console/ecosystem', title: '平台生态', hint: 'SDK、MCP 与开发者网关', icon: Promotion },
   ] },
   { label: '运营', items: [
     { path: '/console/operations', title: '发布与运行', hint: '版本、评测、Trace 与诊断', icon: Operation },
@@ -56,6 +57,7 @@ const groupsEn = [
     { path: '/console/workflows', title: 'Workflows', hint: 'Multi-Agent orchestration', icon: Share },
     { path: '/console/knowledge', title: 'Knowledge', hint: 'RAG data assets', icon: Collection },
     { path: '/console/tools', title: 'Tools & Plugins', hint: 'Runtime capability catalog', icon: Tools },
+    { path: '/console/ecosystem', title: 'Platform Ecosystem', hint: 'SDK, MCP and developer gateway', icon: Promotion },
   ] },
   { label: 'OPERATE', items: [
     { path: '/console/operations', title: 'Release & Runtime', hint: 'Versions, evals, traces and diagnostics', icon: Operation },

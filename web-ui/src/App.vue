@@ -17,6 +17,7 @@ const englishTitles: Record<string, string> = {
   Guardrails: 'Guardrails', Analytics: 'Usage Analytics', Channels: 'Channel Integrations', NotFound: 'Page Not Found',
   Operations: 'Release & Runtime Center',
   EnterpriseGovernance: 'Enterprise Governance',
+  PlatformEcosystem: 'Platform Ecosystem',
 }
 
 watchEffect(() => {
