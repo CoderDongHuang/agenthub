@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: java-console
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: java-console
+  template:
+    metadata:
+      labels:
+        app: java-console
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: java-console
+      containers:
+        - name: java-console
+          image: agenthub/java-console:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: grpc
+              containerPort: 9090
+          envFrom:
+            - configMapRef:
+                name: agenthub-config
+            - secretRef:
+                name: agenthub-secrets
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+            limits: {cpu: "2", memory: 1Gi}
+          startupProbe:
+            httpGet: {path: /api/health, port: http}
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet: {path: /api/health, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /api/health, port: http}
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: java-console
+spec:
+  selector:
+    app: java-console
+  ports:
+    - {name: http, port: 8080, targetPort: http}
+    - {name: grpc, port: 9090, targetPort: grpc}

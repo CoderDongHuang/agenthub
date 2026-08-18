@@ -13,6 +13,9 @@ python-engine/**/__pycache__/
 python-engine/.venv/
 python-engine/venv/
 python-engine/*.pyc
+**/__pycache__/
+**/*.pyc
+**/*.egg-info/
 
 # Node
 web-ui/node_modules/
@@ -28,3 +31,7 @@ Thumbs.db
 # Environment
 .env
 .env.local
+
+# Local development runtime outputs
+.agenthub/
+artifacts/
