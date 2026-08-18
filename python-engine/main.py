@@ -31,6 +31,7 @@ from agent_runtime.core.performance import runtime_metrics
 from agent_runtime.grpc_client.client import get_grpc_client
 from agent_runtime.grpc_client.server import GrpcServer, get_engine, get_tool_executor
 from agent_runtime.rag.chunker import DocumentChunker
+from agent_runtime.mcp.protocol import McpProtocolServer
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ def internal_headers(tenant_id: str = "0") -> dict[str, str]:
     return {"X-Internal-Token": INTERNAL_API_TOKEN, "X-Tenant-Id": tenant_id}
 
 grpc_server = GrpcServer(get_engine(), get_tool_executor())
+mcp_server = McpProtocolServer(get_tool_executor())
 
 
 async def bootstrap_rag_index():
@@ -138,7 +140,7 @@ app.add_middleware(
 
 @app.middleware("http")
 async def protect_runtime_management(request: Request, call_next):
-    if request.url.path.startswith("/rag/") or request.url.path.startswith("/runtime/"):
+    if request.url.path.startswith("/rag/") or request.url.path.startswith("/runtime/") or request.url.path == "/mcp":
         provided = request.headers.get("X-Internal-Token", "")
         if len(INTERNAL_API_TOKEN) < 32 or not secrets.compare_digest(provided, INTERNAL_API_TOKEN):
             return JSONResponse(status_code=401, content={"status": "error", "message": "Unauthorized"})
@@ -261,6 +263,23 @@ async def runtime_capabilities(request: Request):
         "rag": retriever_stats,
         "performance": runtime_metrics.snapshot(),
     }
+
+
+@app.post("/mcp")
+async def mcp_endpoint(request: Request):
+    """MCP Streamable HTTP JSON-RPC endpoint backed by the AgentHub tool registry."""
+    try:
+        payload = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={
+            "jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}
+        })
+    if not isinstance(payload, dict):
+        return JSONResponse(status_code=400, content={
+            "jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "Invalid Request"}
+        })
+    response = await mcp_server.handle(payload)
+    return response or JSONResponse(status_code=202, content={})
 
 
 if __name__ == "__main__":
