@@ -13,6 +13,7 @@ from agent_runtime.tools.builtin.calculator import CalculatorTool
 from agent_runtime.tools.builtin.datetime_tool import DateTimeTool
 from agent_runtime.tools.builtin.web_search import WebSearchTool
 from agent_runtime.tools.registry import ToolRegistry
+from agent_runtime.sandbox.policy import SandboxViolation, ToolSandboxPolicy
 
 log = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class ToolExecutor:
         self._tools: Dict[str, AgentTool] = {}
         self._call_counts: Dict[str, int] = {}
         self._registry = ToolRegistry()
+        self._sandbox = ToolSandboxPolicy()
         self._concurrency = asyncio.Semaphore(max(1, int(os.getenv("TOOL_MAX_CONCURRENCY", "8"))))
         self._register_builtin_tools()
         self._discover_custom_tools()
@@ -67,6 +69,12 @@ class ToolExecutor:
         tool = self._tools.get(tool_name)
         if not tool:
             return f"Error: Tool '{tool_name}' not found"
+
+        try:
+            self._sandbox.validate(tool_name, args)
+        except SandboxViolation as exc:
+            log.warning("Sandbox blocked tool %s: %s", tool_name, exc)
+            return f"Error: Sandbox policy blocked tool call — {exc}"
 
         # 限流检查
         if tool.rate_limit > 0:

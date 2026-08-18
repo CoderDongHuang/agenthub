@@ -4,7 +4,7 @@ import { useAuthStore } from '../stores/auth'
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    ...['dashboard', 'agents', 'users', 'approvals', 'audit', 'tools', 'knowledge', 'workflows', 'guardrails', 'governance', 'analytics', 'channels', 'operations']
+    ...['dashboard', 'agents', 'users', 'approvals', 'audit', 'tools', 'knowledge', 'workflows', 'guardrails', 'governance', 'ecosystem', 'analytics', 'channels', 'operations']
       .map(path => ({ path: `/${path}`, redirect: `/console/${path}` })),
     // 首页（公开）
     {
@@ -132,6 +132,12 @@ const router = createRouter({
           name: 'EnterpriseGovernance',
           component: () => import('../views/governance/EnterpriseGovernanceView.vue'),
           meta: { title: '企业治理' },
+        },
+        {
+          path: 'ecosystem',
+          name: 'PlatformEcosystem',
+          component: () => import('../views/ecosystem/PlatformEcosystemView.vue'),
+          meta: { title: '平台生态' },
         },
         {
           path: 'analytics',

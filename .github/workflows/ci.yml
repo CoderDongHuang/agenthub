@@ -59,3 +59,18 @@ jobs:
         working-directory: python-engine
       - run: python -m pytest -q
         working-directory: python-engine
+
+  ecosystem-delivery:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.31.0
+      - run: kubectl kustomize deploy/kubernetes/base > /dev/null
+      - run: kubectl kustomize deploy/kubernetes/overlays/region-primary > /dev/null
+      - run: kubectl kustomize deploy/kubernetes/overlays/region-secondary > /dev/null
+      - run: docker compose config --quiet
+      - run: docker build -f java-console/Dockerfile -t agenthub/java-console:ci .
+      - run: docker build -f python-engine/Dockerfile -t agenthub/python-engine:ci .
+      - run: docker build -f web-ui/Dockerfile -t agenthub/web-ui:ci .

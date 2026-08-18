@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agenthub-config
+data:
+  APP_ENV: production
+  AGENTHUB_DEMO_MODE: "false"
+  AGENTHUB_SECURE_COOKIE: "true"
+  PYTHON_RUNTIME_URL: http://python-engine:8000
+  PYTHON_GRPC_HOST: python-engine
+  PYTHON_GRPC_PORT: "9091"
+  JAVA_CONSOLE_URL: http://java-console:8080
+  AGENTHUB_CORS_ORIGINS: https://agenthub.example.com
+  REGION: local-primary
