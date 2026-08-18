@@ -55,6 +55,8 @@ agenthub:
   internal-token: ${AGENTHUB_INTERNAL_TOKEN}
   kms:
     master-key: ${AGENTHUB_KMS_MASTER_KEY:${JWT_SECRET}}
+  ecosystem:
+    signing-key: ${AGENTHUB_ECOSYSTEM_SIGNING_KEY:${AGENTHUB_KMS_MASTER_KEY:${JWT_SECRET}}}
   auth:
     secure-cookie: ${AGENTHUB_SECURE_COOKIE:false}
   cors:

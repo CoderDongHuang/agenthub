@@ -53,6 +53,7 @@ public class SecurityConfig {
                 .ignoringRequestMatchers(
                     "/api/v1/**", "/api/internal/**", "/api/channel/**",
                     "/api/hooks/**",
+                    "/api/gateway/**",
                     "/api/approvals/create", "/api/tools/register",
                     "/api/knowledge/docs/chunks", "/api/knowledge/docs/*/chunks"))
             .sessionManagement(session -> session
@@ -73,10 +74,11 @@ public class SecurityConfig {
                 .requestMatchers("/api/channel/**").permitAll()
                 .requestMatchers("/api/hooks/workflows/**").permitAll()
                 .requestMatchers("/api/v1/**").permitAll()           // API Key 认证
+                .requestMatchers("/api/gateway/**").permitAll()      // HMAC developer application authentication
                 .requestMatchers("/api-docs/**", "/swagger-ui/**").permitAll()
                 .requestMatchers("/api/internal/**", "/api/approvals/create", "/api/tools/register")
                     .hasRole("INTERNAL")
-                .requestMatchers("/api/users/**", "/api/tenants/**", "/api/governance/**").hasRole("ADMIN")
+                .requestMatchers("/api/users/**", "/api/tenants/**", "/api/governance/**", "/api/ecosystem/**").hasRole("ADMIN")
                 // 需要认证
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().denyAll()
