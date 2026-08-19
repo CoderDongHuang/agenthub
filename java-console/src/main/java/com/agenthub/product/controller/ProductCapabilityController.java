@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.math.BigDecimal;
 
 @RestController
 @RequestMapping("/api/product")
@@ -119,6 +120,46 @@ public class ProductCapabilityController {
     @GetMapping("/traces/{traceId}")
     public ApiResponse<Map<String, Object>> trace(@PathVariable UUID traceId) {
         return ApiResponse.ok(traces.get(user.tenantId(), traceId));
+    }
+
+    @GetMapping("/observability/overview")
+    public ApiResponse<Map<String, Object>> observability(@RequestParam(defaultValue = "24") int hours) {
+        return ApiResponse.ok(traces.observability(user.tenantId(), hours));
+    }
+
+    @PostMapping("/observability/traces/{traceId}/replay")
+    public ApiResponse<Map<String, Object>> replay(@PathVariable UUID traceId) {
+        return ApiResponse.ok(traces.replay(user.tenantId(), traceId));
+    }
+
+    @PostMapping("/observability/traces/{traceId}/feedback")
+    public ApiResponse<Map<String, Object>> feedback(@PathVariable UUID traceId,
+                                                     @RequestBody Map<String, Object> body) {
+        return ApiResponse.ok(traces.addFeedback(user.tenantId(), user.userId(), traceId,
+                Integer.parseInt(String.valueOf(body.getOrDefault("rating", 0))),
+                String.valueOf(body.getOrDefault("comment", ""))));
+    }
+
+    @GetMapping("/observability/traces/{traceId}/feedback")
+    public ApiResponse<List<Map<String, Object>>> feedback(@PathVariable UUID traceId) {
+        return ApiResponse.ok(traces.feedback(user.tenantId(), traceId));
+    }
+
+    @PostMapping("/observability/evaluations/compare")
+    public ApiResponse<Map<String, Object>> compareEvaluations(@RequestBody Map<String, Object> body) {
+        return ApiResponse.ok(evaluations.compareVersions(user.tenantId(),
+                Long.parseLong(String.valueOf(body.get("datasetId"))),
+                Long.parseLong(String.valueOf(body.get("baselineVersionId"))),
+                Long.parseLong(String.valueOf(body.get("candidateVersionId")))));
+    }
+
+    @PostMapping("/observability/agents/{agentId}/versions/{candidateVersionId}/canary-guard")
+    public ApiResponse<Map<String, Object>> canaryGuard(@PathVariable Long agentId,
+                                                        @PathVariable Long candidateVersionId,
+                                                        @RequestBody Map<String, Object> body) {
+        BigDecimal minimumDelta = new BigDecimal(String.valueOf(body.getOrDefault("minimumScoreDelta", 0)));
+        return ApiResponse.ok(versions.guardCanary(user.tenantId(), agentId, candidateVersionId,
+                Long.parseLong(String.valueOf(body.get("baselineVersionId"))), minimumDelta));
     }
 
     @GetMapping("/routing/endpoints")

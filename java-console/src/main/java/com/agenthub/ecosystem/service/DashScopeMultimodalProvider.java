@@ -3,6 +3,7 @@ package com.agenthub.ecosystem.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -27,16 +28,17 @@ public class DashScopeMultimodalProvider {
     private final String visionModel;
     private final String audioModel;
 
+    @Autowired
     public DashScopeMultimodalProvider(ObjectMapper objectMapper,
                                        @Value("${agenthub.multimodal.dashscope.api-key:}") String apiKey,
                                        @Value("${agenthub.multimodal.dashscope.vision-model:qwen-vl-plus}") String visionModel,
-                                       @Value("${agenthub.multimodal.dashscope.audio-model:qwen-audio-turbo}") String audioModel,
+                                       @Value("${agenthub.multimodal.dashscope.audio-model:qwen-audio-3.0-asr-flash}") String audioModel,
                                        @Value("${agenthub.multimodal.dashscope.base-url:https://dashscope.aliyuncs.com/compatible-mode/v1}") String baseUrl) {
         this.objectMapper = objectMapper;
         this.client = RestClient.builder().baseUrl(baseUrl).build();
         this.apiKey = Objects.toString(apiKey, "").trim();
         this.visionModel = Objects.toString(visionModel, "qwen-vl-plus").trim();
-        this.audioModel = Objects.toString(audioModel, "qwen-audio-turbo").trim();
+        this.audioModel = Objects.toString(audioModel, "qwen-audio-3.0-asr-flash").trim();
     }
 
     DashScopeMultimodalProvider(ObjectMapper objectMapper, RestClient client, String apiKey,
@@ -45,7 +47,7 @@ public class DashScopeMultimodalProvider {
         this.client = client;
         this.apiKey = Objects.toString(apiKey, "").trim();
         this.visionModel = Objects.toString(visionModel, "qwen-vl-plus").trim();
-        this.audioModel = Objects.toString(audioModel, "qwen-audio-turbo").trim();
+        this.audioModel = Objects.toString(audioModel, "qwen-audio-3.0-asr-flash").trim();
     }
 
     public boolean configured() { return !apiKey.isBlank(); }

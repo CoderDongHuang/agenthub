@@ -85,6 +85,8 @@ public class ChatController {
         Instant traceStarted = Instant.now();
         UUID traceId = traceService.start(currentUser.tenantId(), sessionId, agentId, version.id(), model,
                 route.reason(), message);
+        traceService.recordOperational(traceId, 0, 0, 0,
+                executor instanceof ThreadPoolExecutor pool ? pool.getQueue().size() : 0, false);
 
         SseEmitter emitter = new SseEmitter(300_000L); // 5 分钟超时
 
@@ -214,6 +216,8 @@ public class ChatController {
         Instant traceStarted = Instant.now();
         UUID traceId = traceService.start(currentUser.tenantId(), sessionId, agentId, version.id(), route.model(),
                 route.reason(), message);
+        traceService.recordOperational(traceId, 0, 0, 0,
+                executor instanceof ThreadPoolExecutor pool ? pool.getQueue().size() : 0, false);
 
         StringBuilder fullText = new StringBuilder();
         AtomicReference<String> executionError = new AtomicReference<>();

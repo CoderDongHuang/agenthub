@@ -143,6 +143,39 @@ public class AgentVersionService {
                 passed ? "passed" : "failed", versionId, tenantId);
     }
 
+    @Transactional
+    public Map<String, Object> guardCanary(Long tenantId, Long agentId, Long candidateVersionId,
+                                           Long baselineVersionId, BigDecimal minimumScoreDelta) {
+        get(tenantId, agentId, candidateVersionId);
+        get(tenantId, agentId, baselineVersionId);
+        BigDecimal baseline = latestEvaluationScore(tenantId, baselineVersionId);
+        BigDecimal candidate = latestEvaluationScore(tenantId, candidateVersionId);
+        BigDecimal delta = candidate.subtract(baseline);
+        boolean rollback = candidate.compareTo(BigDecimal.ZERO) == 0 || delta.compareTo(minimumScoreDelta) < 0;
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("candidateVersionId", candidateVersionId);
+        result.put("baselineVersionId", baselineVersionId);
+        result.put("baselineScore", baseline);
+        result.put("candidateScore", candidate);
+        result.put("scoreDelta", delta);
+        result.put("rollbackTriggered", rollback);
+        if (rollback) {
+            result.put("version", rollback(tenantId, agentId, baselineVersionId));
+            result.put("reason", "Candidate score fell below the canary guard threshold");
+        } else {
+            result.put("reason", "Candidate remains within the canary guard threshold");
+        }
+        return result;
+    }
+
+    private BigDecimal latestEvaluationScore(Long tenantId, Long versionId) {
+        List<BigDecimal> scores = jdbc.query("SELECT score FROM evaluation_run WHERE tenant_id=? AND agent_version_id=? " +
+                        "ORDER BY completed_at DESC NULLS LAST, id DESC LIMIT 1",
+                (rs, rowNum) -> rs.getBigDecimal(1), tenantId, versionId);
+        if (scores.isEmpty()) throw new NoSuchElementException("No evaluation run for version " + versionId);
+        return Objects.requireNonNullElse(scores.get(0), BigDecimal.ZERO);
+    }
+
     private void enforceEvaluationGate(Long tenantId, Long versionId, String evaluationStatus) {
         Integer activeDatasets = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM evaluation_dataset WHERE tenant_id=? AND status='active'",
