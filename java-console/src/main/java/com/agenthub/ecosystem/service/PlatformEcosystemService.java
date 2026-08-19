@@ -353,7 +353,7 @@ public class PlatformEcosystemService {
                   (id,tenant_id,file_name,media_type,input_digest,input_bytes,pipeline,status,extraction,provider,review_required,created_by)
                 VALUES (?,?,?,?,?,?,?,?,?::jsonb,?,?,?)
                 """, id, tenantId, result.fileName(), result.mediaType(), result.digest(), result.bytes(), result.pipeline(),
-                result.status(), json(result.extraction()), semantic ? "unconfigured" : null, result.reviewRequired(), userId);
+                result.status(), json(result.extraction()), result.provider(), result.reviewRequired(), userId);
         return mediaJobById(tenantId, id);
     }
 

@@ -57,6 +57,12 @@ agenthub:
     master-key: ${AGENTHUB_KMS_MASTER_KEY:${JWT_SECRET}}
   ecosystem:
     signing-key: ${AGENTHUB_ECOSYSTEM_SIGNING_KEY:${AGENTHUB_KMS_MASTER_KEY:${JWT_SECRET}}}
+  multimodal:
+    dashscope:
+      api-key: ${DASHSCOPE_API_KEY:}
+      vision-model: ${DASHSCOPE_VISION_MODEL:qwen-vl-plus}
+      audio-model: ${DASHSCOPE_AUDIO_MODEL:qwen-audio-turbo}
+      base-url: ${DASHSCOPE_API_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
   auth:
     secure-cookie: ${AGENTHUB_SECURE_COOKIE:false}
   cors:
