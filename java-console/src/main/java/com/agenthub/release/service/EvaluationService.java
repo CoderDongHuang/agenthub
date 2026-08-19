@@ -142,6 +142,28 @@ public class EvaluationService {
                 tenantId, safeLimit);
     }
 
+    public Map<String, Object> compareVersions(Long tenantId, Long datasetId, Long baselineVersionId,
+                                               Long candidateVersionId) {
+        requireDataset(tenantId, datasetId);
+        Map<String, Object> baseline = latestRun(tenantId, datasetId, baselineVersionId);
+        Map<String, Object> candidate = latestRun(tenantId, datasetId, candidateVersionId);
+        BigDecimal baselineScore = decimal(baseline.get("score"), BigDecimal.ZERO);
+        BigDecimal candidateScore = decimal(candidate.get("score"), BigDecimal.ZERO);
+        BigDecimal delta = candidateScore.subtract(baselineScore).setScale(2, RoundingMode.HALF_UP);
+        return Map.of("datasetId", datasetId, "baseline", baseline, "candidate", candidate,
+                "scoreDelta", delta, "candidateImproved", delta.signum() >= 0,
+                "candidatePassed", "passed".equals(candidate.get("status")));
+    }
+
+    private Map<String, Object> latestRun(Long tenantId, Long datasetId, Long versionId) {
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT id,agent_version_id,status,score,passed_cases,total_cases,started_at,completed_at " +
+                        "FROM evaluation_run WHERE tenant_id=? AND dataset_id=? AND agent_version_id=? " +
+                        "ORDER BY completed_at DESC NULLS LAST, id DESC LIMIT 1", tenantId, datasetId, versionId);
+        if (rows.isEmpty()) throw new NoSuchElementException("No evaluation run for version " + versionId);
+        return rows.get(0);
+    }
+
     public Map<String, Object> getRun(Long tenantId, Long runId) {
         List<Map<String, Object>> rows = jdbc.queryForList(
                 "SELECT run.id,run.dataset_id,dataset.name AS dataset_name,dataset.target_type,run.agent_id," +

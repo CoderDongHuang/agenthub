@@ -61,7 +61,7 @@ agenthub:
     dashscope:
       api-key: ${DASHSCOPE_API_KEY:}
       vision-model: ${DASHSCOPE_VISION_MODEL:qwen-vl-plus}
-      audio-model: ${DASHSCOPE_AUDIO_MODEL:qwen-audio-turbo}
+      audio-model: ${DASHSCOPE_AUDIO_MODEL:qwen-audio-3.0-asr-flash}
       base-url: ${DASHSCOPE_API_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
   auth:
     secure-cookie: ${AGENTHUB_SECURE_COOKIE:false}
