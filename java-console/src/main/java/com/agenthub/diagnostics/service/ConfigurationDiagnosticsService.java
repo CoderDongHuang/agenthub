@@ -14,7 +14,7 @@ import java.util.*;
 public class ConfigurationDiagnosticsService {
 
     private static final List<String> MODEL_KEYS = List.of(
-            "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY", "GEMINI_API_KEY",
+            "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY", "DASHSCOPE_API_KEY",
             "QWEN_API_KEY", "KIMI_API_KEY", "ZHIPU_API_KEY", "MINIMAX_API_KEY");
 
     private final JdbcTemplate jdbc;

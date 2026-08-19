@@ -25,9 +25,11 @@ public class MultimodalExtractionService {
     private static final Pattern PHONE = Pattern.compile("(?<!\\d)(?:\\+?86[- ]?)?1[3-9]\\d{9}(?!\\d)");
     private final Tika tika = new Tika();
     private final ObjectMapper objectMapper;
+    private final DashScopeMultimodalProvider semanticProvider;
 
-    public MultimodalExtractionService(ObjectMapper objectMapper) {
+    public MultimodalExtractionService(ObjectMapper objectMapper, DashScopeMultimodalProvider semanticProvider) {
         this.objectMapper = objectMapper;
+        this.semanticProvider = semanticProvider;
     }
 
     public ExtractionResult extract(String fileName, String declaredMediaType, byte[] content, boolean semanticRequested) {
@@ -48,14 +50,31 @@ public class MultimodalExtractionService {
             extraction = document(content, mediaType);
             pipeline = "document-structure-v1";
         }
-        boolean semanticReady = !semanticRequested;
+        String status = "completed";
+        String provider = null;
+        boolean reviewRequired = false;
         if (semanticRequested) {
             extraction = new LinkedHashMap<>(extraction);
-            extraction.put("semanticPhase", "provider_required");
-            extraction.put("providerRequirement", "Configure a multimodal model adapter for transcription, OCR, captioning or visual question answering");
+            try {
+                DashScopeMultimodalProvider.SemanticResult semantic = semanticProvider.analyze(safeName, mediaType, content);
+                extraction.putAll(semantic.extraction());
+                pipeline += "+dashscope-semantic-v1";
+                provider = semantic.provider();
+                reviewRequired = true;
+            } catch (DashScopeMultimodalProvider.ProviderNotConfiguredException exception) {
+                status = "needs_provider";
+                extraction.put("semanticPhase", "provider_required");
+                extraction.put("providerRequirement", "Set DASHSCOPE_API_KEY to enable OCR, visual understanding and audio transcription");
+            } catch (DashScopeMultimodalProvider.ProviderException exception) {
+                status = "failed";
+                provider = "alibaba-dashscope";
+                reviewRequired = true;
+                extraction.put("semanticPhase", "provider_error");
+                extraction.put("providerError", exception.getMessage());
+            }
         }
         return new ExtractionResult(safeName, mediaType, digest(content), content.length, pipeline,
-                semanticReady ? "completed" : "needs_provider", extraction, semanticRequested);
+                status, extraction, provider, reviewRequired);
     }
 
     private Map<String, Object> image(byte[] content) {
@@ -149,5 +168,5 @@ public class MultimodalExtractionService {
 
     public record ExtractionResult(String fileName, String mediaType, String digest, long bytes,
                                    String pipeline, String status, Map<String, Object> extraction,
-                                   boolean reviewRequired) {}
+                                   String provider, boolean reviewRequired) {}
 }

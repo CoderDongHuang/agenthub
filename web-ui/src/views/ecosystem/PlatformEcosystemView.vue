@@ -268,9 +268,9 @@ onMounted(loadAll)
     </section>
 
     <section v-else-if="activeTab === 'multimodal'" class="ecosystem-workspace">
-      <header><div><h2>{{ tx('多模态与结构化抽取', 'Multimodal and structured extraction') }}</h2><p>{{ tx('本地解析文档实体、图片维度和 WAV 音频参数；语义转写、OCR 与视觉问答明确要求外部多模态供应商。', 'Locally extracts document entities, image dimensions, and WAV audio metadata; semantic transcription, OCR, and visual QA explicitly require a multimodal provider.') }}</p></div><el-icon><MagicStick /></el-icon></header>
+      <header><div><h2>{{ tx('多模态与结构化抽取', 'Multimodal and structured extraction') }}</h2><p>{{ tx('本地解析基础结构；开启语义理解后，阿里云百炼 Qwen-VL 与 Qwen-Audio 执行图片 OCR、视觉理解和音频转写。', 'Extracts basic structure locally; with semantic understanding enabled, Alibaba Cloud Qwen-VL and Qwen-Audio perform image OCR, visual understanding, and audio transcription.') }}</p></div><el-icon><MagicStick /></el-icon></header>
       <form class="media-form" @submit.prevent="extractMedia"><input type="file" accept=".txt,.md,.json,.csv,.pdf,.docx,.xlsx,.pptx,image/*,audio/wav" @change="selectMedia" /><el-switch v-model="semanticRequested" :active-text="tx('请求语义理解', 'Request semantic understanding')" /><button class="console-primary" type="submit"><el-icon><Upload /></el-icon>{{ tx('上传并抽取', 'Upload & extract') }}</button></form>
-      <el-table :data="mediaJobs"><el-table-column prop="fileName" :label="tx('文件', 'File')" /><el-table-column prop="mediaType" label="MIME" /><el-table-column prop="pipeline" :label="tx('流水线', 'Pipeline')" /><el-table-column prop="status" :label="tx('状态', 'Status')" /><el-table-column prop="reviewRequired" :label="tx('人工/供应商复核', 'Review/provider')" /></el-table>
+      <el-table :data="mediaJobs"><el-table-column prop="fileName" :label="tx('文件', 'File')" /><el-table-column prop="mediaType" label="MIME" /><el-table-column prop="pipeline" :label="tx('流水线', 'Pipeline')" /><el-table-column prop="provider" :label="tx('供应商', 'Provider')" /><el-table-column prop="status" :label="tx('状态', 'Status')" /><el-table-column prop="reviewRequired" :label="tx('人工复核', 'Review')" /></el-table>
     </section>
 
     <section v-else-if="activeTab === 'deployment'" class="ecosystem-workspace">

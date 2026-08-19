@@ -16,7 +16,10 @@ import java.nio.charset.StandardCharsets;
 import static org.junit.jupiter.api.Assertions.*;
 
 class MultimodalExtractionServiceTest {
-    private final MultimodalExtractionService service = new MultimodalExtractionService(new ObjectMapper());
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final DashScopeMultimodalProvider provider = new DashScopeMultimodalProvider(
+            objectMapper, org.springframework.web.client.RestClient.create(), "", "qwen-vl-plus", "qwen-audio-turbo");
+    private final MultimodalExtractionService service = new MultimodalExtractionService(objectMapper, provider);
 
     @Test
     void extractsDocumentStructureAndEntities() {
@@ -41,6 +44,7 @@ class MultimodalExtractionServiceTest {
         assertEquals(16, result.extraction().get("width"));
         assertEquals(9, result.extraction().get("height"));
         assertEquals("provider_required", result.extraction().get("semanticPhase"));
+        assertNull(result.provider());
     }
 
     @Test
