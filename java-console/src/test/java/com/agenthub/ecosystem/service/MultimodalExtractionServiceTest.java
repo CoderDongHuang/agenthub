@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class MultimodalExtractionServiceTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final DashScopeMultimodalProvider provider = new DashScopeMultimodalProvider(
-            objectMapper, org.springframework.web.client.RestClient.create(), "", "qwen-vl-plus", "qwen-audio-turbo");
+            objectMapper, org.springframework.web.client.RestClient.create(), "", "qwen-vl-plus", "qwen3.5-omni-flash");
     private final MultimodalExtractionService service = new MultimodalExtractionService(objectMapper, provider);
 
     @Test

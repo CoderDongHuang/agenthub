@@ -1,6 +1,8 @@
 package com.agenthub.ecosystem.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.apache.tika.Tika;
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.parser.AutoDetectParser;
@@ -12,6 +14,10 @@ import javax.imageio.ImageIO;
 import javax.sound.sampled.AudioSystem;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.util.*;
@@ -26,10 +32,19 @@ public class MultimodalExtractionService {
     private final Tika tika = new Tika();
     private final ObjectMapper objectMapper;
     private final DashScopeMultimodalProvider semanticProvider;
+    private final String ffmpegPath;
 
-    public MultimodalExtractionService(ObjectMapper objectMapper, DashScopeMultimodalProvider semanticProvider) {
+    @Autowired
+    public MultimodalExtractionService(ObjectMapper objectMapper,
+                                       DashScopeMultimodalProvider semanticProvider,
+                                       @Value("${agenthub.multimodal.ffmpeg-path:ffmpeg}") String ffmpegPath) {
         this.objectMapper = objectMapper;
         this.semanticProvider = semanticProvider;
+        this.ffmpegPath = resolveFfmpegPath(Objects.toString(ffmpegPath, "ffmpeg").trim());
+    }
+
+    MultimodalExtractionService(ObjectMapper objectMapper, DashScopeMultimodalProvider semanticProvider) {
+        this(objectMapper, semanticProvider, "ffmpeg");
     }
 
     public ExtractionResult extract(String fileName, String declaredMediaType, byte[] content, boolean semanticRequested) {
@@ -46,6 +61,9 @@ public class MultimodalExtractionService {
         } else if (mediaType.startsWith("audio/")) {
             extraction = audio(content);
             pipeline = "audio-metadata-v1";
+        } else if (mediaType.startsWith("video/")) {
+            extraction = video(content);
+            pipeline = "video-metadata-v1";
         } else {
             extraction = document(content, mediaType);
             pipeline = "document-structure-v1";
@@ -56,9 +74,20 @@ public class MultimodalExtractionService {
         if (semanticRequested) {
             extraction = new LinkedHashMap<>(extraction);
             try {
-                DashScopeMultimodalProvider.SemanticResult semantic = semanticProvider.analyze(safeName, mediaType, content);
+                String semanticFileName = safeName;
+                String semanticMediaType = mediaType;
+                byte[] semanticContent = content;
+                if (mediaType.startsWith("video/")) {
+                    semanticFileName = safeName + ".wav";
+                    semanticMediaType = "audio/wav";
+                    semanticContent = extractVideoAudio(content, safeName);
+                    extraction.put("audioTrackExtracted", true);
+                    extraction.put("audioTrackBytes", semanticContent.length);
+                }
+                DashScopeMultimodalProvider.SemanticResult semantic = semanticProvider.analyze(
+                        semanticFileName, semanticMediaType, semanticContent);
                 extraction.putAll(semantic.extraction());
-                pipeline += "+dashscope-semantic-v1";
+                pipeline += (mediaType.startsWith("video/") ? "+video-audio-extract-v1" : "") + "+dashscope-semantic-v1";
                 provider = semantic.provider();
                 reviewRequired = true;
             } catch (DashScopeMultimodalProvider.ProviderNotConfiguredException exception) {
@@ -111,6 +140,62 @@ public class MultimodalExtractionService {
         } catch (Exception exception) {
             throw new IllegalArgumentException("Unable to inspect audio: " + exception.getMessage(), exception);
         }
+    }
+
+    private Map<String, Object> video(byte[] content) {
+        return Map.of("kind", "video", "bytes", content.length,
+                "semanticInput", "audio_track", "audioTrackExtracted", false);
+    }
+
+    private byte[] extractVideoAudio(byte[] content, String fileName) {
+        Path input = null;
+        Path output = null;
+        try {
+            input = Files.createTempFile("agenthub-video-", extension(fileName, ".mp4"));
+            output = Files.createTempFile("agenthub-audio-", ".wav");
+            Files.write(input, content);
+            Process process = new ProcessBuilder(ffmpegPath, "-hide_banner", "-loglevel", "error", "-y",
+                    "-i", input.toString(), "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le",
+                    output.toString()).redirectErrorStream(true).start();
+            String diagnostics = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim();
+            if (process.waitFor() != 0) {
+                throw new DashScopeMultimodalProvider.ProviderException("Unable to extract video audio with FFmpeg at " + ffmpegPath +
+                        (diagnostics.isBlank() ? "" : ": " + diagnostics.substring(0, Math.min(300, diagnostics.length()))));
+            }
+            byte[] audio = Files.readAllBytes(output);
+            if (audio.length == 0) throw new DashScopeMultimodalProvider.ProviderException("Video has no readable audio track");
+            return audio;
+        } catch (DashScopeMultimodalProvider.ProviderException exception) {
+            throw exception;
+        } catch (InterruptedException exception) {
+            // Clear the request worker's interrupt state so Spring can finish one response cleanly.
+            throw new DashScopeMultimodalProvider.ProviderException("Unable to extract video audio with FFmpeg at " + ffmpegPath + ": process interrupted", exception);
+        } catch (IOException exception) {
+            throw new DashScopeMultimodalProvider.ProviderException("Unable to extract video audio with FFmpeg at " + ffmpegPath + ": " + exception.getMessage(), exception);
+        } finally {
+            deleteQuietly(input);
+            deleteQuietly(output);
+        }
+    }
+
+    private String extension(String fileName, String fallback) {
+        int dot = fileName.lastIndexOf('.');
+        return dot > 0 && dot < fileName.length() - 1 ? fileName.substring(dot) : fallback;
+    }
+
+    private void deleteQuietly(Path path) {
+        if (path == null) return;
+        try { Files.deleteIfExists(path); } catch (IOException ignored) { }
+    }
+
+    private String resolveFfmpegPath(String configured) {
+        Path local = Path.of("D:\\PythonCode\\ffmpeg\\bin\\ffmpeg.exe");
+        if (!configured.isBlank() && !configured.equalsIgnoreCase("ffmpeg")) {
+            try {
+                if (Files.isRegularFile(Path.of(configured))) return configured;
+            } catch (InvalidPathException ignored) { }
+        }
+        return Files.isRegularFile(local) ? local.toString() : (configured.isBlank() ? "ffmpeg" : configured);
     }
 
     private Map<String, Object> document(byte[] content, String mediaType) {

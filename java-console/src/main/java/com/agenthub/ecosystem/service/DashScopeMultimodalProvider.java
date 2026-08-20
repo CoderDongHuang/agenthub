@@ -16,7 +16,8 @@ import java.util.Objects;
 
 /**
  * 阿里云百炼 DashScope 多模态适配器。视觉和音频均走国内 OpenAI 兼容接口，
- * 一个 DASHSCOPE_API_KEY 即可覆盖 OCR、视觉理解和语音转写。
+ * 一个 DASHSCOPE_API_KEY 即可覆盖 OCR、视觉理解和语音转写。音频使用当前账号
+ * 可真实接受 input_audio 的 Qwen Omni 模型，而不是仅在模型目录中可见的 ASR 模型。
  */
 @Component
 public class DashScopeMultimodalProvider {
@@ -32,13 +33,13 @@ public class DashScopeMultimodalProvider {
     public DashScopeMultimodalProvider(ObjectMapper objectMapper,
                                        @Value("${agenthub.multimodal.dashscope.api-key:}") String apiKey,
                                        @Value("${agenthub.multimodal.dashscope.vision-model:qwen-vl-plus}") String visionModel,
-                                       @Value("${agenthub.multimodal.dashscope.audio-model:qwen-audio-3.0-asr-flash}") String audioModel,
+                                       @Value("${agenthub.multimodal.dashscope.audio-model:qwen3.5-omni-flash}") String audioModel,
                                        @Value("${agenthub.multimodal.dashscope.base-url:https://dashscope.aliyuncs.com/compatible-mode/v1}") String baseUrl) {
         this.objectMapper = objectMapper;
         this.client = RestClient.builder().baseUrl(baseUrl).build();
         this.apiKey = Objects.toString(apiKey, "").trim();
         this.visionModel = Objects.toString(visionModel, "qwen-vl-plus").trim();
-        this.audioModel = Objects.toString(audioModel, "qwen-audio-3.0-asr-flash").trim();
+        this.audioModel = Objects.toString(audioModel, "qwen3.5-omni-flash").trim();
     }
 
     DashScopeMultimodalProvider(ObjectMapper objectMapper, RestClient client, String apiKey,
@@ -47,7 +48,7 @@ public class DashScopeMultimodalProvider {
         this.client = client;
         this.apiKey = Objects.toString(apiKey, "").trim();
         this.visionModel = Objects.toString(visionModel, "qwen-vl-plus").trim();
-        this.audioModel = Objects.toString(audioModel, "qwen-audio-3.0-asr-flash").trim();
+        this.audioModel = Objects.toString(audioModel, "qwen3.5-omni-flash").trim();
     }
 
     public boolean configured() { return !apiKey.isBlank(); }
