@@ -70,6 +70,8 @@ agenthub:
     allowed-origins: ${AGENTHUB_CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
   channel:
     default-agent-id: ${CHANNEL_DEFAULT_AGENT_ID:1}
+    default-tenant-id: ${CHANNEL_DEFAULT_TENANT_ID:0}
+    retry-interval-ms: ${CHANNEL_RETRY_INTERVAL_MS:5000}
   chat:
     max-concurrency: ${AGENTHUB_CHAT_MAX_CONCURRENCY:16}
     queue-capacity: ${AGENTHUB_CHAT_QUEUE_CAPACITY:64}
