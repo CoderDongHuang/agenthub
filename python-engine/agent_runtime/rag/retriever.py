@@ -32,8 +32,9 @@ class Retriever:
             )
             for index, (content, embedding) in enumerate(zip(chunks, embeddings)):
                 cursor.execute(
-                    "INSERT INTO knowledge_chunk (doc_id, chunk_index, content, embedding, index_version) "
-                    "VALUES (%s,%s,%s,%s,%s)", (doc_id, index, content, embedding, index_version),
+                "INSERT INTO knowledge_chunk (doc_id, chunk_index, content, embedding, index_version, citation) "
+                "VALUES (%s,%s,%s,%s,%s,jsonb_build_object('documentId',%s,'chunkIndex',%s))",
+                (doc_id, index, content, embedding, index_version, doc_id, index),
                 )
             cursor.execute("UPDATE knowledge_document SET chunk_count=%s, status='ready' WHERE id=%s", (len(chunks), doc_id))
 
