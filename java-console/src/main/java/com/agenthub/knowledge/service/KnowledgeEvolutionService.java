@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.client.RestClient;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -15,10 +17,17 @@ public class KnowledgeEvolutionService {
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
+    private final RestClient runtimeClient;
+    private final String internalToken;
+    private static final Set<String> SOURCE_TYPES = Set.of("manual", "http", "webhook", "file", "import");
 
-    public KnowledgeEvolutionService(JdbcTemplate jdbc, ObjectMapper mapper) {
+    public KnowledgeEvolutionService(JdbcTemplate jdbc, ObjectMapper mapper,
+                                     @Value("${python.runtime.base-url}") String runtimeBaseUrl,
+                                     @Value("${agenthub.internal-token}") String internalToken) {
         this.jdbc = jdbc;
         this.mapper = mapper;
+        this.runtimeClient = RestClient.builder().baseUrl(runtimeBaseUrl).build();
+        this.internalToken = internalToken;
     }
 
     public List<Map<String, Object>> listSources(Long tenantId, Long kbId) {
@@ -34,6 +43,7 @@ public class KnowledgeEvolutionService {
         requireKnowledgeBase(tenantId, kbId);
         String key = required(body, "sourceKey");
         String type = required(body, "sourceType");
+        if (!SOURCE_TYPES.contains(type)) throw new IllegalArgumentException("Unsupported sourceType: " + type);
         Long id = jdbc.queryForObject(
                 "INSERT INTO knowledge_source(tenant_id,kb_id,source_key,source_type,config,inherited_acl) " +
                         "VALUES (?,?,?,?,?::jsonb,?::jsonb) RETURNING id", Long.class, tenantId, kbId, key, type,
@@ -88,8 +98,20 @@ public class KnowledgeEvolutionService {
         String cursor = text(body.get("cursor"));
         jdbc.update("UPDATE knowledge_source SET sync_cursor=?,last_sync_at=NOW(),last_error=NULL,updated_at=NOW() WHERE id=?",
                 cursor.isBlank() ? null : cursor, sourceId);
-        return Map.of("sourceId", sourceId, "created", created, "updated", updated, "unchanged", unchanged,
-                "changedDocumentIds", changedDocumentIds, "cursor", cursor);
+        long kbId = ((Number) source.get("kb_id")).longValue();
+        Map<String, Object> version = createIndexVersion(tenantId, kbId, "sync",
+                changedDocumentIds.isEmpty() ? "completed" : "partial",
+                Map.of("sourceId", sourceId, "created", created, "updated", updated, "unchanged", unchanged,
+                        "changedDocumentIds", changedDocumentIds), null);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("sourceId", sourceId);
+        result.put("created", created);
+        result.put("updated", updated);
+        result.put("unchanged", unchanged);
+        result.put("changedDocumentIds", changedDocumentIds);
+        result.put("cursor", cursor);
+        result.put("indexVersion", version);
+        return result;
     }
 
     public Map<String, Object> evaluate(Long tenantId, Long kbId, Map<String, Object> body) {
@@ -147,6 +169,96 @@ public class KnowledgeEvolutionService {
                 }).toList();
     }
 
+    public Map<String, Object> overview(Long tenantId, Long kbId) {
+        requireKnowledgeBase(tenantId, kbId);
+        Map<String, Object> counts = jdbc.queryForMap("""
+                SELECT COUNT(DISTINCT doc.id) AS documents,COUNT(chunk.id) AS chunks,
+                       COUNT(chunk.id) FILTER (WHERE chunk.citation IS NOT NULL AND chunk.citation <> '{}'::jsonb) AS cited_chunks
+                FROM knowledge_document doc LEFT JOIN knowledge_chunk chunk ON chunk.doc_id=doc.id
+                WHERE doc.kb_id=?
+                """, kbId);
+        Map<String, Object> evaluations = jdbc.queryForMap("""
+                SELECT COUNT(*) AS runs,COUNT(*) FILTER (WHERE passed) AS passed
+                FROM knowledge_evaluation_run WHERE tenant_id=? AND kb_id=?
+                """, tenantId, kbId);
+        long chunks = ((Number) counts.get("chunks")).longValue();
+        long cited = ((Number) counts.get("cited_chunks")).longValue();
+        long runs = ((Number) evaluations.get("runs")).longValue();
+        long passed = ((Number) evaluations.get("passed")).longValue();
+        List<Map<String, Object>> versions = indexVersions(tenantId, kbId);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("documents", counts.get("documents"));
+        result.put("chunks", chunks);
+        result.put("citationCoverage", chunks == 0 ? 0D : (double) cited / chunks);
+        result.put("evaluationRuns", runs);
+        result.put("evaluationPassRate", runs == 0 ? 0D : (double) passed / runs);
+        result.put("sources", listSources(tenantId, kbId).size());
+        result.put("latestVersion", versions.isEmpty() ? null : versions.getFirst());
+        return result;
+    }
+
+    public List<Map<String, Object>> indexVersions(Long tenantId, Long kbId) {
+        requireKnowledgeBase(tenantId, kbId);
+        return jdbc.queryForList("""
+                SELECT id,version_no AS "versionNo",trigger_type AS "triggerType",status,
+                       document_count AS "documentCount",chunk_count AS "chunkCount",change_summary AS "changeSummary",
+                       last_error AS "lastError",created_at AS "createdAt",completed_at AS "completedAt"
+                FROM knowledge_index_version WHERE tenant_id=? AND kb_id=? ORDER BY version_no DESC LIMIT 50
+                """, tenantId, kbId).stream().map(row -> normalizeJson(row, "changeSummary")).toList();
+    }
+
+    @Transactional
+    public Map<String, Object> rebuild(Long tenantId, Long kbId) {
+        requireKnowledgeBase(tenantId, kbId);
+        Map<String, Object> version = createIndexVersion(tenantId, kbId, "manual", "building", Map.of(), null);
+        long versionId = ((Number) version.get("id")).longValue();
+        List<Long> documents = jdbc.queryForList("SELECT id FROM knowledge_document WHERE kb_id=? ORDER BY id", Long.class, kbId);
+        int completed = 0;
+        List<Map<String, Object>> failures = new ArrayList<>();
+        for (Long documentId : documents) {
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> response = runtimeClient.post()
+                        .uri("/rag/index?doc_id={id}&tenant_id={tenantId}", documentId, tenantId)
+                        .header("X-Internal-Token", internalToken).retrieve().body(Map.class);
+                if (response == null || !"ok".equals(String.valueOf(response.get("status")))) {
+                    throw new IllegalStateException(response == null ? "Empty runtime response" : String.valueOf(response.get("message")));
+                }
+                completed++;
+            } catch (Exception exception) {
+                failures.add(Map.of("documentId", documentId, "error", safe(exception)));
+            }
+        }
+        String status = failures.isEmpty() ? "completed" : completed > 0 ? "partial" : "failed";
+        int chunks = Objects.requireNonNullElse(jdbc.queryForObject(
+                "SELECT COALESCE(SUM(chunk_count),0) FROM knowledge_document WHERE kb_id=?", Integer.class, kbId), 0);
+        Map<String, Object> summary = Map.of("requested", documents.size(), "completed", completed, "failed", failures.size(), "failures", failures);
+        jdbc.update("UPDATE knowledge_index_version SET status=?,document_count=?,chunk_count=?,change_summary=?::jsonb,last_error=?,completed_at=NOW() WHERE id=?",
+                status, documents.size(), chunks, json(summary), failures.isEmpty() ? null : "One or more documents failed to index", versionId);
+        return indexVersions(tenantId, kbId).stream().filter(item -> Objects.equals(item.get("id"), versionId)).findFirst().orElseThrow();
+    }
+
+    private Map<String, Object> createIndexVersion(Long tenantId, Long kbId, String triggerType, String status,
+                                                    Map<String, Object> summary, String error) {
+        jdbc.execute("LOCK TABLE knowledge_index_version IN SHARE ROW EXCLUSIVE MODE");
+        Integer versionNo = jdbc.queryForObject("SELECT COALESCE(MAX(version_no),0)+1 FROM knowledge_index_version WHERE kb_id=?",
+                Integer.class, kbId);
+        Map<String, Object> counts = jdbc.queryForMap(
+                "SELECT COUNT(*) AS documents,COALESCE(SUM(chunk_count),0) AS chunks FROM knowledge_document WHERE kb_id=?", kbId);
+        Long id = jdbc.queryForObject("""
+                INSERT INTO knowledge_index_version(tenant_id,kb_id,version_no,trigger_type,status,document_count,chunk_count,
+                    change_summary,last_error,completed_at) VALUES (?,?,?,?,?,?,?,?::jsonb,?,CASE WHEN ?='building' THEN NULL ELSE NOW() END) RETURNING id
+                """, Long.class, tenantId, kbId, versionNo, triggerType, status, counts.get("documents"), counts.get("chunks"),
+                json(summary), error, status);
+        return Map.of("id", Objects.requireNonNull(id), "versionNo", Objects.requireNonNull(versionNo), "status", status);
+    }
+
+    private Map<String, Object> normalizeJson(Map<String, Object> row, String... fields) {
+        Map<String, Object> result = new LinkedHashMap<>(row);
+        for (String field : fields) result.put(field, parse(row.get(field)));
+        return result;
+    }
+
     private Map<String, Object> getSource(Long tenantId, Long sourceId) {
         List<Map<String, Object>> rows = jdbc.queryForList(
                 "SELECT id,kb_id,source_key,source_type,config::text AS config,inherited_acl::text AS inherited_acl," +
@@ -194,8 +306,8 @@ public class KnowledgeEvolutionService {
     }
 
     private Object parse(Object value) {
-        if (!(value instanceof String text)) return value;
-        try { return mapper.readValue(text, Object.class); }
+        if (value == null || value instanceof Map<?, ?> || value instanceof Collection<?>) return value;
+        try { return mapper.readValue(String.valueOf(value), Object.class); }
         catch (Exception exception) { return Map.of(); }
     }
 
@@ -206,5 +318,10 @@ public class KnowledgeEvolutionService {
         } catch (Exception exception) {
             throw new IllegalStateException("SHA-256 is unavailable", exception);
         }
+    }
+
+    private String safe(Exception exception) {
+        String value = exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage();
+        return value.length() > 500 ? value.substring(0, 500) : value;
     }
 }

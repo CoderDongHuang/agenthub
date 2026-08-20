@@ -350,10 +350,11 @@ public class PlatformEcosystemService {
         UUID id = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO multimodal_job
-                  (id,tenant_id,file_name,media_type,input_digest,input_bytes,pipeline,status,extraction,provider,review_required,created_by)
-                VALUES (?,?,?,?,?,?,?,?,?::jsonb,?,?,?)
+                  (id,tenant_id,file_name,media_type,input_digest,input_bytes,pipeline,status,extraction,provider,review_required,review_status,created_by)
+                VALUES (?,?,?,?,?,?,?,?,?::jsonb,?,?,?,?)
                 """, id, tenantId, result.fileName(), result.mediaType(), result.digest(), result.bytes(), result.pipeline(),
-                result.status(), json(result.extraction()), result.provider(), result.reviewRequired(), userId);
+                result.status(), json(result.extraction()), result.provider(), result.reviewRequired(),
+                result.reviewRequired() ? "pending" : "not_required", userId);
         return mediaJobById(tenantId, id);
     }
 
@@ -361,11 +362,53 @@ public class PlatformEcosystemService {
         return jdbc.queryForList("""
                 SELECT id,file_name AS "fileName",media_type AS "mediaType",input_digest AS "inputDigest",
                        input_bytes AS "inputBytes",pipeline,status,extraction,provider,
-                       review_required AS "reviewRequired",created_at AS "createdAt"
+                       review_required AS "reviewRequired",review_status AS "reviewStatus",reviewer_id AS "reviewerId",
+                       review_notes AS "reviewNotes",corrected_extraction AS "correctedExtraction",
+                       reviewed_at AS "reviewedAt",created_at AS "createdAt"
                 FROM multimodal_job WHERE tenant_id=? ORDER BY created_at DESC LIMIT 100
                 """, tenantId).stream()
-                .map(row -> normalizeJsonColumns(row, "extraction"))
+                .map(row -> normalizeJsonColumns(row, "extraction", "correctedExtraction"))
                 .toList();
+    }
+
+    public List<Map<String, Object>> multimodalReviewQueue(long tenantId, String status) {
+        Set<String> allowed = Set.of("pending", "in_review", "approved", "rejected");
+        String normalized = status == null || status.isBlank() ? "pending" : status;
+        if (!allowed.contains(normalized)) throw new IllegalArgumentException("Unsupported review status");
+        return jdbc.queryForList("""
+                SELECT id,file_name AS "fileName",media_type AS "mediaType",pipeline,status,extraction,provider,
+                       review_required AS "reviewRequired",review_status AS "reviewStatus",reviewer_id AS "reviewerId",
+                       review_notes AS "reviewNotes",corrected_extraction AS "correctedExtraction",
+                       reviewed_at AS "reviewedAt",created_at AS "createdAt"
+                FROM multimodal_job WHERE tenant_id=? AND review_status=? ORDER BY created_at
+                """, tenantId, normalized).stream()
+                .map(row -> normalizeJsonColumns(row, "extraction", "correctedExtraction")).toList();
+    }
+
+    @Transactional
+    public Map<String, Object> claimMultimodalReview(long tenantId, long userId, UUID id) {
+        int updated = jdbc.update("""
+                UPDATE multimodal_job SET review_status='in_review',reviewer_id=?
+                WHERE tenant_id=? AND id=? AND review_required=TRUE AND review_status='pending'
+                """, userId, tenantId, id);
+        if (updated == 0) throw new IllegalStateException("Review job is unavailable or already claimed");
+        return mediaJobById(tenantId, id);
+    }
+
+    @Transactional
+    public Map<String, Object> completeMultimodalReview(long tenantId, long userId, UUID id, Map<String, Object> body) {
+        String decision = Objects.toString(body.getOrDefault("decision", "approved"));
+        if (!Set.of("approved", "rejected").contains(decision)) {
+            throw new IllegalArgumentException("decision must be approved or rejected");
+        }
+        Object corrected = body.get("correctedExtraction");
+        String notes = Objects.toString(body.getOrDefault("notes", ""));
+        int updated = jdbc.update("""
+                UPDATE multimodal_job SET review_status=?,review_notes=?,corrected_extraction=?::jsonb,reviewed_at=NOW()
+                WHERE tenant_id=? AND id=? AND review_status='in_review' AND reviewer_id=?
+                """, decision, notes, corrected == null ? null : json(corrected), tenantId, id, userId);
+        if (updated == 0) throw new IllegalStateException("Review must be completed by the user who claimed it");
+        return mediaJobById(tenantId, id);
     }
 
     public List<Map<String, Object>> workerPools(long tenantId) {
@@ -554,10 +597,12 @@ public class PlatformEcosystemService {
         Map<String, Object> row = jdbc.queryForMap("""
                 SELECT id,file_name AS "fileName",media_type AS "mediaType",input_digest AS "inputDigest",
                        input_bytes AS "inputBytes",pipeline,status,extraction,provider,
-                       review_required AS "reviewRequired",created_at AS "createdAt"
+                       review_required AS "reviewRequired",review_status AS "reviewStatus",reviewer_id AS "reviewerId",
+                       review_notes AS "reviewNotes",corrected_extraction AS "correctedExtraction",
+                       reviewed_at AS "reviewedAt",created_at AS "createdAt"
                 FROM multimodal_job WHERE tenant_id=? AND id=?
                 """, tenantId, id);
-        return normalizeJsonColumns(row, "extraction");
+        return normalizeJsonColumns(row, "extraction", "correctedExtraction");
     }
 
     private Map<String, Object> workerPoolById(long tenantId, long id) {

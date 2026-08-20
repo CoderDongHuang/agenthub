@@ -18,11 +18,15 @@ const packages = ref<any[]>([])
 const mcpConnections = ref<any[]>([])
 const developerApps = ref<any[]>([])
 const mediaJobs = ref<any[]>([])
+const reviewQueue = ref<any[]>([])
 const workerPools = ref<any[]>([])
 const drills = ref<any[]>([])
 const portal = ref<any>(null)
 const deployment = ref<any>(null)
 const result = ref<any>(null)
+const reviewVisible = ref(false)
+const selectedReview = ref<any>(null)
+const reviewForm = ref({ decision: 'approved', notes: '', correctedExtraction: '{}' })
 const oneTimeApp = ref<any>(null)
 
 const packageForm = ref({
@@ -56,6 +60,7 @@ async function loadAll() {
     api.get('/ecosystem/overview'), api.get('/ecosystem/packages'), api.get('/ecosystem/mcp/connections'),
     api.get('/ecosystem/developer-apps'), api.get('/ecosystem/multimodal/jobs'), api.get('/ecosystem/worker-pools'),
     api.get('/ecosystem/resilience/drills'), api.get('/ecosystem/developer-portal'), api.get('/ecosystem/deployment/plan'),
+    api.get('/ecosystem/multimodal/review-queue?status=pending'),
   ])
   const data = requests.map(item => item.status === 'fulfilled' ? (item.value as any).data : null)
   overview.value = data[0] || { counts: {} }
@@ -67,6 +72,7 @@ async function loadAll() {
   drills.value = data[6] || []
   portal.value = data[7]
   deployment.value = data[8]
+  reviewQueue.value = data[9] || []
   loading.value = false
 }
 
@@ -202,6 +208,25 @@ async function extractMedia() {
   }))
 }
 
+async function claimReview(item: any) {
+  const claimed = await run(tx('复核任务已认领', 'Review job claimed'), () => api.post(`/ecosystem/multimodal/jobs/${item.id}/claim`))
+  if (!claimed) return
+  selectedReview.value = claimed
+  reviewForm.value = { decision: 'approved', notes: '', correctedExtraction: JSON.stringify(claimed.extraction || {}, null, 2) }
+  reviewVisible.value = true
+}
+
+async function submitReview() {
+  if (!selectedReview.value) return
+  let correctedExtraction: any
+  try { correctedExtraction = JSON.parse(reviewForm.value.correctedExtraction) }
+  catch { return ElMessage.error(tx('修订结果必须是有效 JSON', 'Corrected extraction must be valid JSON')) }
+  const completed = await run(tx('人工复核已完成', 'Human review completed'), () => api.post(`/ecosystem/multimodal/jobs/${selectedReview.value.id}/review`, {
+    decision: reviewForm.value.decision, notes: reviewForm.value.notes, correctedExtraction,
+  }))
+  if (completed) reviewVisible.value = false
+}
+
 async function scaleWorkers() {
   await run(tx('Worker 弹性计划已计算', 'Worker scaling plan calculated'), () => api.post('/ecosystem/worker-pools/scale-plan', scaleForm.value))
 }
@@ -270,7 +295,9 @@ onMounted(loadAll)
     <section v-else-if="activeTab === 'multimodal'" class="ecosystem-workspace">
       <header><div><h2>{{ tx('多模态与结构化抽取', 'Multimodal and structured extraction') }}</h2><p>{{ tx('本地解析基础结构；开启语义理解后，阿里云百炼 Qwen-VL 与 Qwen Omni 执行图片 OCR、视觉理解、音频转写和视频音轨转写。', 'Extracts basic structure locally; with semantic understanding enabled, Alibaba Cloud Qwen-VL and Qwen Omni perform image OCR, visual understanding, audio transcription, and video soundtrack transcription.') }}</p></div><el-icon><MagicStick /></el-icon></header>
       <form class="media-form" @submit.prevent="extractMedia"><input type="file" accept=".txt,.md,.json,.csv,.pdf,.docx,.xlsx,.pptx,image/*,audio/wav" @change="selectMedia" /><el-switch v-model="semanticRequested" :active-text="tx('请求语义理解', 'Request semantic understanding')" /><button class="console-primary" type="submit"><el-icon><Upload /></el-icon>{{ tx('上传并抽取', 'Upload & extract') }}</button></form>
-      <el-table :data="mediaJobs"><el-table-column prop="fileName" :label="tx('文件', 'File')" /><el-table-column prop="mediaType" label="MIME" /><el-table-column prop="pipeline" :label="tx('流水线', 'Pipeline')" /><el-table-column prop="provider" :label="tx('供应商', 'Provider')" /><el-table-column prop="status" :label="tx('状态', 'Status')" /><el-table-column prop="reviewRequired" :label="tx('人工复核', 'Review')" /></el-table>
+      <el-table :data="mediaJobs"><el-table-column prop="fileName" :label="tx('文件', 'File')" /><el-table-column prop="mediaType" label="MIME" /><el-table-column prop="pipeline" :label="tx('流水线', 'Pipeline')" /><el-table-column prop="provider" :label="tx('供应商', 'Provider')" /><el-table-column prop="status" :label="tx('抽取状态', 'Extraction')" /><el-table-column prop="reviewStatus" :label="tx('复核状态', 'Review status')" /></el-table>
+      <h3 class="review-heading">{{ tx('人工复核队列', 'Human review queue') }}</h3>
+      <el-table :data="reviewQueue"><el-table-column prop="fileName" :label="tx('工单文件', 'Ticket file')" /><el-table-column prop="mediaType" label="MIME" /><el-table-column prop="pipeline" :label="tx('处理流水线', 'Pipeline')" /><el-table-column prop="provider" :label="tx('供应商', 'Provider')" /><el-table-column width="120"><template #default="scope"><el-button link @click="claimReview(scope.row)">{{ tx('认领复核', 'Claim') }}</el-button></template></el-table-column></el-table>
     </section>
 
     <section v-else-if="activeTab === 'deployment'" class="ecosystem-workspace">
@@ -294,6 +321,7 @@ onMounted(loadAll)
     </section>
 
     <aside v-if="result" class="ecosystem-result"><header><span>{{ tx('最近执行结果', 'Latest execution result') }}</span><button aria-label="Close" @click="result = null">×</button></header><pre>{{ JSON.stringify(result, null, 2) }}</pre></aside>
+    <el-dialog v-model="reviewVisible" :title="tx('多模态人工复核', 'Multimodal human review')" width="680px"><el-form label-position="top"><el-form-item :label="tx('结论', 'Decision')"><el-segmented v-model="reviewForm.decision" :options="[{ label: tx('批准', 'Approve'), value: 'approved' }, { label: tx('驳回', 'Reject'), value: 'rejected' }]" /></el-form-item><el-form-item :label="tx('复核备注', 'Review notes')"><el-input v-model="reviewForm.notes" /></el-form-item><el-form-item :label="tx('修订后的结构化结果', 'Corrected structured extraction')"><el-input v-model="reviewForm.correctedExtraction" type="textarea" :rows="14" /></el-form-item></el-form><template #footer><el-button @click="reviewVisible = false">{{ tx('取消', 'Cancel') }}</el-button><el-button type="primary" @click="submitReview">{{ tx('完成复核', 'Complete review') }}</el-button></template></el-dialog>
   </div>
 </template>
 
@@ -307,6 +335,7 @@ onMounted(loadAll)
 .horizontal-form,.media-form { padding: 16px; display: grid; grid-template-columns: 1fr 140px 140px minmax(220px,2fr) auto; gap: 9px; align-items: center; border-bottom: 1px solid var(--console-line); }.media-form { grid-template-columns: minmax(260px,1fr) auto auto; }.media-form input { min-width: 0; color: var(--console-ink); font-size: 9px; }
 .deployment-note { padding: 12px 16px; display: flex; gap: 14px; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--console-line); background: var(--console-panel-soft); color: var(--console-muted); font-size: 8px; }.deployment-note code { color: var(--console-accent); }
 .risk-strip { display: grid; grid-template-columns: repeat(3,1fr); border-bottom: 1px solid var(--console-line); }.risk-strip div { min-height: 92px; padding: 16px; display: flex; justify-content: space-between; align-items: flex-end; border-right: 1px solid var(--console-line); }.risk-strip div:last-child { border: 0; }.risk-strip span { color: var(--console-muted); font: 8px ui-monospace,monospace; }.risk-strip strong { font: 28px ui-monospace,monospace; }
+.review-heading { margin: 0; padding: 14px 16px; border-top: 1px solid var(--console-line); border-bottom: 1px solid var(--console-line); font-size: 11px; }
 .devkit-grid { display: grid; grid-template-columns: repeat(3,1fr); border-bottom: 1px solid var(--console-line); }.devkit-grid article { min-height: 180px; padding: 20px; border-right: 1px solid var(--console-line); }.devkit-grid article:last-child { border: 0; }.devkit-grid span { color: var(--console-accent); font: 8px ui-monospace,monospace; }.devkit-grid code { display: block; margin-top: 24px; padding: 10px; background: #0c1012; color: #8fe1b4; font-size: 8px; overflow-wrap: anywhere; }.devkit-grid p { margin-top: 15px; color: var(--console-muted); font-size: 9px; line-height: 1.7; }.portal-spec { padding: 16px; display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: end; }.portal-spec pre { max-height: 260px; margin: 0; padding: 14px; overflow: auto; background: #0c1012; color: #8fe1b4; font: 8px/1.55 ui-monospace,monospace; white-space: pre-wrap; word-break: break-word; }
 .ecosystem-result { position: fixed; z-index: 70; right: 20px; bottom: 18px; width: min(470px,calc(100vw - 32px)); max-height: 42vh; border: 1px solid var(--console-line-strong); border-radius: 8px; background: #0c1012; box-shadow: var(--console-shadow); overflow: hidden; }.ecosystem-result header { min-height: 38px; padding: 0 10px 0 13px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--console-line); color: #dce4df; font-size: 9px; }.ecosystem-result header button { width: 28px; height: 28px; border: 0; background: transparent; color: #98a29c; font-size: 18px; cursor: pointer; }.ecosystem-result pre { max-height: calc(42vh - 39px); margin: 0; padding: 13px; overflow: auto; color: #8fe1b4; font: 8px/1.55 ui-monospace,monospace; white-space: pre-wrap; word-break: break-word; }
 @media (max-width: 1100px) { .ecosystem-tabs { grid-template-columns: repeat(4,1fr); }.ecosystem-summary { grid-template-columns: repeat(3,1fr); }.horizontal-form { grid-template-columns: repeat(2,minmax(0,1fr)); }.number-grid { grid-template-columns: repeat(2,1fr); } }

@@ -228,6 +228,21 @@ public class ProductCapabilityController {
         return ApiResponse.ok(knowledge.evaluationRuns(user.tenantId(), kbId));
     }
 
+    @GetMapping("/knowledge/{kbId}/operations")
+    public ApiResponse<Map<String, Object>> knowledgeOperations(@PathVariable Long kbId) {
+        return ApiResponse.ok(knowledge.overview(user.tenantId(), kbId));
+    }
+
+    @GetMapping("/knowledge/{kbId}/index-versions")
+    public ApiResponse<List<Map<String, Object>>> knowledgeIndexVersions(@PathVariable Long kbId) {
+        return ApiResponse.ok(knowledge.indexVersions(user.tenantId(), kbId));
+    }
+
+    @PostMapping("/knowledge/{kbId}/rebuild")
+    public ApiResponse<Map<String, Object>> rebuildKnowledgeIndex(@PathVariable Long kbId) {
+        return ApiResponse.ok(knowledge.rebuild(user.tenantId(), kbId));
+    }
+
     @GetMapping("/workflows/templates")
     public ApiResponse<List<Map<String, Object>>> workflowTemplates() {
         return ApiResponse.ok(workflows.templates(user.tenantId()));

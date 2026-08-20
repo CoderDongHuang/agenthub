@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/ecosystem")
@@ -110,6 +111,26 @@ public class PlatformEcosystemController {
     public ApiResponse<Map<String, Object>> extractMedia(@RequestBody Map<String, Object> body) {
         Map<String, Object> result = ecosystem.extractMedia(user.tenantId(), user.userId(), body);
         record("ecosystem_multimodal", "Extract multimodal asset", String.valueOf(result.get("id")));
+        return ApiResponse.ok(result);
+    }
+
+    @GetMapping("/multimodal/review-queue")
+    public ApiResponse<List<Map<String, Object>>> multimodalReviewQueue(@RequestParam(defaultValue = "pending") String status) {
+        return ApiResponse.ok(ecosystem.multimodalReviewQueue(user.tenantId(), status));
+    }
+
+    @PostMapping("/multimodal/jobs/{id}/claim")
+    public ApiResponse<Map<String, Object>> claimMultimodalReview(@PathVariable UUID id) {
+        Map<String, Object> result = ecosystem.claimMultimodalReview(user.tenantId(), user.userId(), id);
+        record("ecosystem_multimodal_review", "Claim review job", String.valueOf(id));
+        return ApiResponse.ok(result);
+    }
+
+    @PostMapping("/multimodal/jobs/{id}/review")
+    public ApiResponse<Map<String, Object>> completeMultimodalReview(@PathVariable UUID id,
+                                                                     @RequestBody Map<String, Object> body) {
+        Map<String, Object> result = ecosystem.completeMultimodalReview(user.tenantId(), user.userId(), id, body);
+        record("ecosystem_multimodal_review", "Complete review job", String.valueOf(id));
         return ApiResponse.ok(result);
     }
 

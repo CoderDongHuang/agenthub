@@ -51,7 +51,8 @@ public class SecurityConfig {
                 .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                 .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
                 .ignoringRequestMatchers(
-                    "/api/v1/**", "/api/internal/**", "/api/channel/**",
+                    "/api/v1/**", "/api/internal/**",
+                    "/api/channel/feishu/callback", "/api/channel/dingtalk/callback", "/api/channel/wechat/callback",
                     "/api/hooks/**",
                     "/api/gateway/**",
                     "/api/approvals/create", "/api/tools/register",
@@ -71,7 +72,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/auth/csrf").permitAll()
                 .requestMatchers("/api/health").permitAll()
-                .requestMatchers("/api/channel/**").permitAll()
+                .requestMatchers("/api/channel/feishu/callback", "/api/channel/dingtalk/callback", "/api/channel/wechat/callback").permitAll()
                 .requestMatchers("/api/hooks/workflows/**").permitAll()
                 .requestMatchers("/api/v1/**").permitAll()           // API Key 认证
                 .requestMatchers("/api/gateway/**").permitAll()      // HMAC developer application authentication
