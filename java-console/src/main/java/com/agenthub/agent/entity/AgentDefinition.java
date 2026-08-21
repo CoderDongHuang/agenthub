@@ -18,8 +18,7 @@ public class AgentDefinition {
     private Long id;
 
     @Column(name = "tenant_id", nullable = false)
-    @Builder.Default
-    private Long tenantId = 0L;
+    private Long tenantId;
 
     @Column(nullable = false, length = 100)
     private String name;

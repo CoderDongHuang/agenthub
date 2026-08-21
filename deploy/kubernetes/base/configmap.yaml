@@ -10,5 +10,5 @@ data:
   PYTHON_GRPC_HOST: python-engine
   PYTHON_GRPC_PORT: "9091"
   JAVA_CONSOLE_URL: http://java-console:8080
-  AGENTHUB_CORS_ORIGINS: https://agenthub.example.com
+  AGENTHUB_CORS_ORIGINS: https://agentmesh.asia,https://www.agentmesh.asia,https://console.agentmesh.asia
   REGION: local-primary

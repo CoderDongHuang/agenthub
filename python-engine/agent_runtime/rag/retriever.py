@@ -36,7 +36,11 @@ class Retriever:
                 "VALUES (%s,%s,%s,%s,%s,jsonb_build_object('documentId',%s,'chunkIndex',%s))",
                 (doc_id, index, content, embedding, index_version, doc_id, index),
                 )
-            cursor.execute("UPDATE knowledge_document SET chunk_count=%s, status='ready' WHERE id=%s", (len(chunks), doc_id))
+            cursor.execute(
+                "UPDATE knowledge_document kd SET chunk_count=%s, status='ready' FROM knowledge_base kb "
+                "WHERE kd.kb_id=kb.id AND kd.id=%s AND kb.tenant_id=%s",
+                (len(chunks), doc_id, tenant_id),
+            )
 
     def remove(self, doc_id: str, tenant_id: str = "0"):
         with self._connection_factory() as connection, connection.cursor() as cursor:

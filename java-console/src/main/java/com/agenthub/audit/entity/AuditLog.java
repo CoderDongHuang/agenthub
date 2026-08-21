@@ -17,8 +17,7 @@ public class AuditLog {
     private Long id;
 
     @Column(name = "tenant_id", nullable = false)
-    @Builder.Default
-    private Long tenantId = 0L;
+    private Long tenantId;
 
     @Column(name = "event_type", nullable = false, length = 50)
     private String eventType;

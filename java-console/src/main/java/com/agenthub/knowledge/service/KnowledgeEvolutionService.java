@@ -3,6 +3,7 @@ package com.agenthub.knowledge.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.beans.factory.annotation.Value;
@@ -100,9 +101,10 @@ public class KnowledgeEvolutionService {
                 cursor.isBlank() ? null : cursor, sourceId);
         long kbId = ((Number) source.get("kb_id")).longValue();
         Map<String, Object> version = createIndexVersion(tenantId, kbId, "sync",
-                changedDocumentIds.isEmpty() ? "completed" : "partial",
+                changedDocumentIds.isEmpty() ? "completed" : "building",
                 Map.of("sourceId", sourceId, "created", created, "updated", updated, "unchanged", unchanged,
                         "changedDocumentIds", changedDocumentIds), null);
+        enqueueIndexTasks(tenantId, kbId, ((Number) version.get("id")).longValue(), changedDocumentIds);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("sourceId", sourceId);
         result.put("created", created);
@@ -213,34 +215,66 @@ public class KnowledgeEvolutionService {
         Map<String, Object> version = createIndexVersion(tenantId, kbId, "manual", "building", Map.of(), null);
         long versionId = ((Number) version.get("id")).longValue();
         List<Long> documents = jdbc.queryForList("SELECT id FROM knowledge_document WHERE kb_id=? ORDER BY id", Long.class, kbId);
-        int completed = 0;
-        List<Map<String, Object>> failures = new ArrayList<>();
-        for (Long documentId : documents) {
+        enqueueIndexTasks(tenantId, kbId, versionId, documents);
+        if (documents.isEmpty()) finalizeVersion(versionId);
+        return indexVersions(tenantId, kbId).stream().filter(item -> Objects.equals(item.get("id"), versionId)).findFirst().orElseThrow();
+    }
+
+    @Scheduled(fixedDelayString = "${agenthub.knowledge.index-worker-interval-ms:3000}", initialDelay = 5000)
+    public void processIndexTasks() {
+        String workerId = UUID.randomUUID().toString();
+        jdbc.update("UPDATE knowledge_index_task SET status='retrying',worker_id=NULL,lease_expires_at=NULL,next_attempt_at=NOW(),last_error='Worker lease expired',updated_at=NOW() WHERE status='processing' AND lease_expires_at<NOW()");
+        List<Map<String, Object>> tasks = jdbc.queryForList("""
+                WITH candidates AS (
+                    SELECT id FROM knowledge_index_task WHERE status IN ('queued','retrying') AND next_attempt_at<=NOW()
+                    ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 10
+                )
+                UPDATE knowledge_index_task task SET status='processing',worker_id=?,lease_expires_at=NOW()+INTERVAL '10 minutes',
+                    attempt_count=attempt_count+1,updated_at=NOW() FROM candidates WHERE task.id=candidates.id
+                RETURNING task.id,task.tenant_id,task.document_id,task.version_id,task.attempt_count,task.max_attempts
+                """, workerId);
+        Set<Long> versions = new HashSet<>();
+        for (Map<String, Object> task : tasks) {
+            long taskId = ((Number) task.get("id")).longValue();
+            long tenantId = ((Number) task.get("tenant_id")).longValue();
+            long documentId = ((Number) task.get("document_id")).longValue();
+            long versionId = ((Number) task.get("version_id")).longValue();
+            versions.add(versionId);
             try {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> response = runtimeClient.post()
+                @SuppressWarnings("unchecked") Map<String, Object> response = runtimeClient.post()
                         .uri("/rag/index?doc_id={id}&tenant_id={tenantId}", documentId, tenantId)
                         .header("X-Internal-Token", internalToken).retrieve().body(Map.class);
                 if (response == null || !"ok".equals(String.valueOf(response.get("status")))) {
                     throw new IllegalStateException(response == null ? "Empty runtime response" : String.valueOf(response.get("message")));
                 }
-                completed++;
+                jdbc.update("UPDATE knowledge_index_task SET status='completed',worker_id=NULL,lease_expires_at=NULL,last_error=NULL,updated_at=NOW() WHERE id=? AND worker_id=?", taskId, workerId);
             } catch (Exception exception) {
-                failures.add(Map.of("documentId", documentId, "error", safe(exception)));
+                boolean exhausted = ((Number) task.get("attempt_count")).intValue() >= ((Number) task.get("max_attempts")).intValue();
+                jdbc.update("UPDATE knowledge_index_task SET status=?,worker_id=NULL,lease_expires_at=NULL,next_attempt_at=NOW()+(? * INTERVAL '1 second'),last_error=?,updated_at=NOW() WHERE id=? AND worker_id=?",
+                        exhausted ? "failed" : "retrying", Math.min(300, 5L << Math.min(6, ((Number) task.get("attempt_count")).intValue() - 1)), safe(exception), taskId, workerId);
             }
         }
-        String status = failures.isEmpty() ? "completed" : completed > 0 ? "partial" : "failed";
-        int chunks = Objects.requireNonNullElse(jdbc.queryForObject(
-                "SELECT COALESCE(SUM(chunk_count),0) FROM knowledge_document WHERE kb_id=?", Integer.class, kbId), 0);
-        Map<String, Object> summary = Map.of("requested", documents.size(), "completed", completed, "failed", failures.size(), "failures", failures);
-        jdbc.update("UPDATE knowledge_index_version SET status=?,document_count=?,chunk_count=?,change_summary=?::jsonb,last_error=?,completed_at=NOW() WHERE id=?",
-                status, documents.size(), chunks, json(summary), failures.isEmpty() ? null : "One or more documents failed to index", versionId);
-        return indexVersions(tenantId, kbId).stream().filter(item -> Objects.equals(item.get("id"), versionId)).findFirst().orElseThrow();
+        versions.forEach(this::finalizeVersion);
+    }
+
+    private void enqueueIndexTasks(Long tenantId, Long kbId, long versionId, List<Long> documents) {
+        for (Long documentId : documents) jdbc.update("INSERT INTO knowledge_index_task(tenant_id,kb_id,document_id,version_id) VALUES (?,?,?,?) ON CONFLICT DO NOTHING", tenantId, kbId, documentId, versionId);
+    }
+
+    private void finalizeVersion(long versionId) {
+        Map<String, Object> counts = jdbc.queryForMap("SELECT COUNT(*) AS total,COUNT(*) FILTER (WHERE status='completed') AS completed,COUNT(*) FILTER (WHERE status='failed') AS failed,COUNT(*) FILTER (WHERE status IN ('queued','processing','retrying')) AS pending FROM knowledge_index_task WHERE version_id=?", versionId);
+        if (((Number) counts.get("pending")).longValue() > 0) return;
+        long total = ((Number) counts.get("total")).longValue();
+        long completed = ((Number) counts.get("completed")).longValue();
+        long failed = ((Number) counts.get("failed")).longValue();
+        String status = failed == 0 ? "completed" : completed == 0 ? "failed" : "partial";
+        jdbc.update("UPDATE knowledge_index_version version SET status=?,document_count=?,chunk_count=(SELECT COALESCE(SUM(doc.chunk_count),0) FROM knowledge_document doc WHERE doc.kb_id=version.kb_id),change_summary=change_summary || ?::jsonb,last_error=?,completed_at=NOW() WHERE id=? AND status='building'",
+                status, total, json(Map.of("requested", total, "completed", completed, "failed", failed)), failed == 0 ? null : failed + " document(s) failed to index", versionId);
     }
 
     private Map<String, Object> createIndexVersion(Long tenantId, Long kbId, String triggerType, String status,
                                                     Map<String, Object> summary, String error) {
-        jdbc.execute("LOCK TABLE knowledge_index_version IN SHARE ROW EXCLUSIVE MODE");
+        jdbc.queryForObject("SELECT pg_advisory_xact_lock(?)", Object.class, kbId);
         Integer versionNo = jdbc.queryForObject("SELECT COALESCE(MAX(version_no),0)+1 FROM knowledge_index_version WHERE kb_id=?",
                 Integer.class, kbId);
         Map<String, Object> counts = jdbc.queryForMap(

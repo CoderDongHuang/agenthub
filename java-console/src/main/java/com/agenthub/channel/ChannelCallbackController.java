@@ -18,6 +18,7 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Instant;
 import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,11 +46,9 @@ public class ChannelCallbackController {
         this.dingSecret=dingSecret;
     }
 
-    @GetMapping("/feishu/callback") public ResponseEntity<Map<String,String>> feishuVerify(@RequestParam(required=false) String challenge) { return ResponseEntity.ok(Map.of("challenge", challenge==null?"":challenge)); }
     @PostMapping(value="/feishu/callback", consumes=MediaType.APPLICATION_JSON_VALUE)
     public Map<String,String> feishu(@RequestHeader Map<String,String> headers, @RequestBody String body) throws Exception {
         String raw=body;
-        if (headers.containsKey("x-lark-signature") && !verifyFeishu(headers, raw)) throw new SecurityException("invalid feishu signature");
         JsonNode root=mapper.readTree(raw);
         if (root.has("encrypt")) {
             String encrypted = root.path("encrypt").asText("");
@@ -62,18 +61,21 @@ public class ChannelCallbackController {
         }
         if (root.has("challenge")) {
             String token = root.path("token").asText("");
-            if (!feishuToken.isBlank() && !MessageDigest.isEqual(feishuToken.getBytes(StandardCharsets.UTF_8), token.getBytes(StandardCharsets.UTF_8))) throw new SecurityException("invalid feishu verification token");
+            requireConfigured(feishuToken, "Feishu verification token");
+            if (!MessageDigest.isEqual(feishuToken.getBytes(StandardCharsets.UTF_8), token.getBytes(StandardCharsets.UTF_8))) throw new SecurityException("invalid feishu verification token");
             return Map.of("challenge",root.path("challenge").asText());
         }
+        if (!verifyFeishu(headers, raw)) throw new SecurityException("invalid feishu signature");
         JsonNode event=root.path("event"); JsonNode message=event.path("message");
         String text=message.path("content").asText("");
         try { text=mapper.readTree(text).path("text").asText(text); } catch(Exception ignored) { }
         String user=event.at("/sender/sender_id/open_id").asText("feishu-user");
         String externalId=message.path("message_id").asText(root.path("event_id").asText(UUID.randomUUID().toString()));
         String conversation=message.path("chat_id").asText(user);
+        long tenantId=operations.resolveTenant("feishu",root.at("/header/app_id").asText(""));
         Map<String,Object> result=operations.handleInbound(new ChannelOperationsService.InboundMessage(
-                operations.defaultTenantId(),"feishu",externalId,conversation,user,
-                message.path("chat_type").asText("direct"),text,mapper.convertValue(root,Map.class)));
+                tenantId,"feishu",externalId,conversation,user,
+                message.path("chat_type").asText("direct"),text,"",mapper.convertValue(root,Map.class)));
         return Map.of("status",String.valueOf(result.get("status")));
     }
 
@@ -85,30 +87,35 @@ public class ChannelCallbackController {
     }
     @PostMapping(value="/wechat/callback", consumes={MediaType.TEXT_XML_VALUE,MediaType.APPLICATION_XML_VALUE})
     public String wechat(@RequestParam Map<String,String> q,@RequestBody String body) throws Exception {
-        if(q.containsKey("msg_signature") && !verifyWechat(q.get("msg_signature"),q.get("timestamp"),q.get("nonce"),xml(body,"Encrypt",""))) throw new SecurityException("invalid wechat signature");
+        requireKeys(q,"msg_signature","timestamp","nonce");
+        if(!verifyWechat(q.get("msg_signature"),q.get("timestamp"),q.get("nonce"),xml(body,"Encrypt",""))) throw new SecurityException("invalid wechat signature");
         String payload=xml(body,"Encrypt",""); String plain=payload.isBlank()?body:decryptWechat(payload);
         String user=xml(plain,"FromUserName","wechat-user"); String text=xml(plain,"Content","");
         String externalId=xml(plain,"MsgId",xml(plain,"CreateTime",UUID.randomUUID().toString())+":"+user);
-        String conversation=xml(plain,"ToUserName",user)+":"+user;
-        operations.handleInbound(new ChannelOperationsService.InboundMessage(operations.defaultTenantId(),"wechat",
-                externalId,conversation,user,"direct",text,Map.of("xml",plain))); return "success";
+        String accountId=xml(plain,"ToUserName","");
+        String conversation=accountId+":"+user;
+        long tenantId=operations.resolveTenant("wechat",accountId);
+        operations.handleInbound(new ChannelOperationsService.InboundMessage(tenantId,"wechat",
+                externalId,conversation,user,"direct",text,"",Map.of("xml",plain))); return "success";
     }
 
     @PostMapping(value="/dingtalk/callback", consumes=MediaType.APPLICATION_JSON_VALUE)
     public ApiResponse<Map<String,String>> dingtalk(@RequestHeader Map<String,String> h,@RequestBody String body) throws Exception {
-        if(h.containsKey("timestamp") && h.containsKey("sign") && !verifyDing(h.get("timestamp"),h.get("sign"))) throw new SecurityException("invalid dingtalk signature");
+        requireKeys(h,"timestamp","sign");
+        if(!verifyDing(h.get("timestamp"),h.get("sign"))) throw new SecurityException("invalid dingtalk signature");
         JsonNode root=mapper.readTree(body); String user=root.path("senderStaffId").asText(root.path("senderId").asText("dingtalk-user"));
         String text=root.at("/text/content").asText(root.path("content").asText(""));
         String externalId=root.path("msgId").asText(root.path("msgid").asText(UUID.randomUUID().toString()));
         String conversation=root.path("conversationId").asText(user);
+        long tenantId=operations.resolveTenant("dingtalk",root.path("robotCode").asText(""));
         Map<String,Object> result=operations.handleInbound(new ChannelOperationsService.InboundMessage(
-                operations.defaultTenantId(),"dingtalk",externalId,conversation,user,
-                root.path("conversationType").asText("direct"),text,mapper.convertValue(root,Map.class)));
+                tenantId,"dingtalk",externalId,conversation,user,
+                root.path("conversationType").asText("direct"),text,root.path("sessionWebhook").asText(""),mapper.convertValue(root,Map.class)));
         return ApiResponse.ok(Map.of("status",String.valueOf(result.get("status"))));
     }
-    private boolean verifyFeishu(Map<String,String> h,String body) throws Exception { String s=h.get("x-lark-request-timestamp")+h.get("x-lark-request-nonce")+feishuEncryptKey+body; return MessageDigest.isEqual(hex(MessageDigest.getInstance("SHA-256").digest(s.getBytes(StandardCharsets.UTF_8))).getBytes(),h.get("x-lark-signature").getBytes()); }
-    private boolean verifyDing(String ts,String sign) throws Exception { String v=Base64.getEncoder().encodeToString(hmac(dingSecret,(ts+"\n"+dingSecret).getBytes(StandardCharsets.UTF_8),"HmacSHA256")); return MessageDigest.isEqual(v.getBytes(),sign.getBytes()); }
-    private boolean verifyWechat(String sig,String ts,String nonce,String echo) throws Exception { String[] a={wechatToken,ts,nonce,echo}; Arrays.sort(a); return sha1(String.join("",a)).equalsIgnoreCase(sig); }
+    private boolean verifyFeishu(Map<String,String> h,String body) throws Exception { requireConfigured(feishuEncryptKey,"Feishu encrypt key"); requireKeys(h,"x-lark-request-timestamp","x-lark-request-nonce","x-lark-signature"); if(!fresh(h.get("x-lark-request-timestamp"),1)) return false; String s=h.get("x-lark-request-timestamp")+h.get("x-lark-request-nonce")+feishuEncryptKey+body; return MessageDigest.isEqual(hex(MessageDigest.getInstance("SHA-256").digest(s.getBytes(StandardCharsets.UTF_8))).getBytes(StandardCharsets.UTF_8),h.get("x-lark-signature").getBytes(StandardCharsets.UTF_8)); }
+    private boolean verifyDing(String ts,String sign) throws Exception { requireConfigured(dingSecret,"DingTalk signing secret"); if(!fresh(ts,1000)) return false; String v=Base64.getEncoder().encodeToString(hmac(dingSecret,(ts+"\n"+dingSecret).getBytes(StandardCharsets.UTF_8),"HmacSHA256")); return MessageDigest.isEqual(v.getBytes(StandardCharsets.UTF_8),sign.getBytes(StandardCharsets.UTF_8)); }
+    private boolean verifyWechat(String sig,String ts,String nonce,String echo) throws Exception { requireConfigured(wechatToken,"WeCom token"); if(!fresh(ts,1)) return false; String[] a={wechatToken,ts,nonce,echo}; Arrays.sort(a); return sha1(String.join("",a)).equalsIgnoreCase(sig); }
     private String decryptFeishu(String s) throws Exception {
         byte[] key=MessageDigest.getInstance("SHA-256").digest(feishuEncryptKey.getBytes(StandardCharsets.UTF_8));
         byte[] p=decryptBytes(s,key,Arrays.copyOf(key,16));
@@ -136,5 +143,8 @@ public class ChannelCallbackController {
     private static byte[] hmac(String secret,byte[] data,String alg)throws Exception{Mac m=Mac.getInstance(alg);m.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8),alg));return m.doFinal(data);}
     private static String sha1(String s)throws Exception{return hex(MessageDigest.getInstance("SHA-1").digest(s.getBytes(StandardCharsets.UTF_8)));}
     private static String hex(byte[] b){StringBuilder s=new StringBuilder();for(byte x:b)s.append(String.format("%02x",x));return s.toString();}
-    private String xml(String body,String tag,String fallback)throws Exception{Document d=DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(new InputSource(new StringReader(body))); var n=d.getElementsByTagName(tag); return n.getLength()==0?fallback:n.item(0).getTextContent();}
+    private String xml(String body,String tag,String fallback)throws Exception{DocumentBuilderFactory f=DocumentBuilderFactory.newInstance();f.setFeature("http://apache.org/xml/features/disallow-doctype-decl",true);f.setFeature("http://xml.org/sax/features/external-general-entities",false);f.setFeature("http://xml.org/sax/features/external-parameter-entities",false);f.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd",false);f.setXIncludeAware(false);f.setExpandEntityReferences(false);Document d=f.newDocumentBuilder().parse(new InputSource(new StringReader(body)));var n=d.getElementsByTagName(tag);return n.getLength()==0?fallback:n.item(0).getTextContent();}
+    private static boolean fresh(String value,long divisor){try{return Math.abs(Instant.now().getEpochSecond()-Long.parseLong(value)/divisor)<=300;}catch(Exception ignored){return false;}}
+    private static void requireConfigured(String value,String name){if(value==null||value.isBlank())throw new SecurityException(name+" is not configured");}
+    private static void requireKeys(Map<String,String> values,String... keys){for(String key:keys)if(values.getOrDefault(key,"").isBlank())throw new SecurityException("missing required signature field: "+key);}
 }

@@ -6,10 +6,10 @@ metadata:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
   tls:
-    - hosts: [agenthub.example.com]
+    - hosts: [agentmesh.asia]
       secretName: agenthub-tls
   rules:
-    - host: agenthub.example.com
+    - host: agentmesh.asia
       http:
         paths:
           - path: /

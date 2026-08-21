@@ -32,6 +32,7 @@ from agent_runtime.grpc_client.client import get_grpc_client
 from agent_runtime.grpc_client.server import GrpcServer, get_engine, get_tool_executor
 from agent_runtime.rag.chunker import DocumentChunker
 from agent_runtime.mcp.protocol import McpProtocolServer
+from agent_runtime.channels.dingtalk_stream import create_dingtalk_stream_client
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -49,6 +50,8 @@ def internal_headers(tenant_id: str = "0") -> dict[str, str]:
 
 grpc_server = GrpcServer(get_engine(), get_tool_executor())
 mcp_server = McpProtocolServer(get_tool_executor())
+dingtalk_stream_client = create_dingtalk_stream_client()
+dingtalk_stream_task = None
 
 
 async def bootstrap_rag_index():
@@ -79,6 +82,7 @@ async def bootstrap_rag_index():
 
 
 async def startup_event():
+    global dingtalk_stream_task
     log.info("Python Agent 运行时启动中...")
     # 启动 gRPC Server（grpc.aio 异步）
     await grpc_server.start()
@@ -106,12 +110,24 @@ async def startup_event():
 
     await bootstrap_rag_index()
 
+    if dingtalk_stream_client is not None:
+        dingtalk_stream_task = asyncio.create_task(dingtalk_stream_client.start())
+        log.info("DingTalk Stream client started")
+
     log.info("Python Agent 运行时已就绪")
 
 
 async def shutdown_event():
+    global dingtalk_stream_task
     log.info("Python Agent 运行时关闭中...")
     await grpc_server.stop()
+    if dingtalk_stream_task is not None:
+        dingtalk_stream_task.cancel()
+        try:
+            await dingtalk_stream_task
+        except asyncio.CancelledError:
+            pass
+        dingtalk_stream_task = None
 
 
 app = FastAPI(

@@ -24,8 +24,7 @@ public class Department {
     private Long parentId = 0L;
 
     @Column(name = "tenant_id", nullable = false)
-    @Builder.Default
-    private Long tenantId = 0L;
+    private Long tenantId;
 
     @Column(name = "sort_order")
     @Builder.Default

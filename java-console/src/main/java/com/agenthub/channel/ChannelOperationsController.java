@@ -56,6 +56,18 @@ public class ChannelOperationsController {
         return ApiResponse.ok(result);
     }
 
+    @GetMapping("/bindings")
+    public ApiResponse<List<Map<String, Object>>> bindings() {
+        return ApiResponse.ok(operations.bindings(user.tenantId()));
+    }
+
+    @PostMapping("/bindings")
+    public ApiResponse<Map<String, Object>> saveBinding(@RequestBody Map<String, Object> body) {
+        Map<String, Object> result = operations.saveBinding(user.tenantId(), body);
+        record("channel_binding", String.valueOf(result.get("id")));
+        return ApiResponse.ok(result);
+    }
+
     @GetMapping("/card-templates")
     public ApiResponse<Map<String, Object>> cardTemplates(
             @RequestParam(defaultValue = "AgentHub") String title,
@@ -68,7 +80,8 @@ public class ChannelOperationsController {
         String channel = String.valueOf(body.getOrDefault("channel", ""));
         String recipientId = String.valueOf(body.getOrDefault("recipientId", ""));
         String externalId = String.valueOf(body.getOrDefault("externalMessageId", "manual:" + UUID.randomUUID()));
-        long agentId = body.get("agentId") instanceof Number value ? value.longValue() : 1L;
+        if (!(body.get("agentId") instanceof Number agentValue)) throw new IllegalArgumentException("agentId is required");
+        long agentId = agentValue.longValue();
         @SuppressWarnings("unchecked")
         Map<String, Object> payload = body.get("payload") instanceof Map<?, ?> value ? (Map<String, Object>) value : Map.of();
         Map<String, Object> result = operations.enqueueAndDeliver(user.tenantId(), channel, externalId,
@@ -86,7 +99,8 @@ public class ChannelOperationsController {
         String text = String.valueOf(body.getOrDefault("text", "hello"));
         Map<String, Object> result = operations.handleInbound(new ChannelOperationsService.InboundMessage(
                 user.tenantId(), channel, externalId, conversation, sender,
-                String.valueOf(body.getOrDefault("chatType", "direct")), text, body));
+                String.valueOf(body.getOrDefault("chatType", "direct")), text,
+                String.valueOf(body.getOrDefault("replyTarget", "")), body));
         record("channel_inbound_simulation", String.valueOf(result.get("deliveryId")));
         return ApiResponse.ok(result);
     }

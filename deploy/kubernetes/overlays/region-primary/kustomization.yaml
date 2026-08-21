@@ -12,7 +12,7 @@ patches:
     patch: |-
       - op: replace
         path: /spec/rules/0/host
-        value: primary.agenthub.example.com
+        value: primary.agentmesh.asia
       - op: replace
         path: /spec/tls/0/hosts/0
-        value: primary.agenthub.example.com
+        value: primary.agentmesh.asia

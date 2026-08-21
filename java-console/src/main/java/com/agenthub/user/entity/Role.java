@@ -27,8 +27,7 @@ public class Role {
     private String description;
 
     @Column(name = "tenant_id", nullable = false)
-    @Builder.Default
-    private Long tenantId = 0L;
+    private Long tenantId;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

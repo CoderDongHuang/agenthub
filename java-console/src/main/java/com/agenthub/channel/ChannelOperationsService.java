@@ -29,7 +29,6 @@ public class ChannelOperationsService {
     private final ObjectMapper mapper;
     private final PythonAgentClient runtime;
     private final RestClient http = RestClient.create();
-    private final long defaultTenantId;
     private final long defaultAgentId;
     private final String feishuAppId;
     private final String feishuAppSecret;
@@ -43,8 +42,6 @@ public class ChannelOperationsService {
             JdbcTemplate jdbc,
             ObjectMapper mapper,
             PythonAgentClient runtime,
-            @Value("${agenthub.channel.default-tenant-id:0}") long defaultTenantId,
-            @Value("${agenthub.channel.default-agent-id:1}") long defaultAgentId,
             @Value("${FEISHU_APP_ID:}") String feishuAppId,
             @Value("${FEISHU_APP_SECRET:}") String feishuAppSecret,
             @Value("${WECHAT_CORP_ID:}") String wechatCorpId,
@@ -55,8 +52,7 @@ public class ChannelOperationsService {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.runtime = runtime;
-        this.defaultTenantId = defaultTenantId;
-        this.defaultAgentId = defaultAgentId;
+        this.defaultAgentId = -1;
         this.feishuAppId = feishuAppId;
         this.feishuAppSecret = feishuAppSecret;
         this.wechatCorpId = wechatCorpId;
@@ -66,8 +62,15 @@ public class ChannelOperationsService {
         this.dingSecret = dingSecret;
     }
 
-    public long defaultTenantId() {
-        return defaultTenantId;
+    public long resolveTenant(String channel, String externalAccountId) {
+        if (externalAccountId == null || externalAccountId.isBlank()) {
+            throw new SecurityException("channel account identifier is required");
+        }
+        List<Long> tenants = jdbc.queryForList(
+                "SELECT tenant_id FROM channel_binding WHERE channel=? AND external_account_id=? AND enabled=TRUE",
+                Long.class, channel, externalAccountId);
+        if (tenants.size() != 1) throw new SecurityException("active channel binding not found");
+        return tenants.getFirst();
     }
 
     @Transactional
@@ -81,22 +84,50 @@ public class ChannelOperationsService {
                 INSERT INTO channel_delivery(id,tenant_id,channel,direction,external_message_id,conversation_key,
                     recipient_id,status,payload,max_attempts)
                 VALUES (?,?,?,?,?,?,?,'accepted',?::jsonb,1)
-                ON CONFLICT(channel,external_message_id,direction) DO NOTHING RETURNING id
+                ON CONFLICT(tenant_id,channel,external_message_id,direction) DO NOTHING RETURNING id
                 """,
                 (rs, rowNum) -> rs.getObject("id", UUID.class), UUID.randomUUID(), message.tenantId(), message.channel(),
-                "inbound", message.externalMessageId(), message.conversationKey(), message.senderId(), json(message.payload()));
+                "inbound", message.externalMessageId(), message.conversationKey(), message.senderId(), json(message));
         if (inserted.isEmpty()) {
             Map<String, Object> existing = jdbc.queryForMap(
-                    "SELECT id,status,response_payload FROM channel_delivery WHERE channel=? AND external_message_id=? AND direction='inbound'",
-                    message.channel(), message.externalMessageId());
+                    "SELECT id,status,response_payload FROM channel_delivery WHERE tenant_id=? AND channel=? AND external_message_id=? AND direction='inbound'",
+                    message.tenantId(), message.channel(), message.externalMessageId());
             return Map.of("duplicate", true, "deliveryId", existing.get("id"), "status", existing.get("status"));
         }
 
-        UUID deliveryId = inserted.getFirst();
+        return Map.of("duplicate", false, "deliveryId", inserted.getFirst(), "status", "accepted");
+    }
+
+    @Scheduled(fixedDelayString = "${agenthub.channel.retry-interval-ms:5000}", initialDelay = 5000)
+    public void processInboundDeliveries() {
+        String workerId = UUID.randomUUID().toString();
+        jdbc.update("UPDATE channel_delivery SET status='retrying',worker_id=NULL,lease_expires_at=NULL,last_error='Inbound worker lease expired',updated_at=NOW() WHERE direction='inbound' AND status='processing' AND lease_expires_at<NOW()");
+        List<Map<String, Object>> claimed = jdbc.queryForList("""
+                WITH candidates AS (
+                    SELECT id FROM channel_delivery WHERE direction='inbound' AND status IN ('accepted','retrying')
+                    ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 20
+                )
+                UPDATE channel_delivery delivery SET status='processing',worker_id=?,lease_expires_at=NOW()+INTERVAL '5 minutes',
+                    attempt_count=attempt_count+1,updated_at=NOW() FROM candidates WHERE delivery.id=candidates.id
+                RETURNING delivery.id,delivery.payload::text AS payload
+                """, workerId);
+        for (Map<String, Object> row : claimed) {
+            UUID deliveryId = (UUID) row.get("id");
+            try {
+                InboundMessage message = mapper.convertValue(parse(row.get("payload")), InboundMessage.class);
+                processInbound(deliveryId, message);
+            } catch (Exception exception) {
+                jdbc.update("UPDATE channel_delivery SET status=CASE WHEN attempt_count>=max_attempts THEN 'dead_letter' ELSE 'retrying' END,last_error=?,worker_id=NULL,lease_expires_at=NULL,updated_at=NOW() WHERE id=? AND worker_id=?",
+                        safe(exception), deliveryId, workerId);
+            }
+        }
+    }
+
+    private void processInbound(UUID deliveryId, InboundMessage message) {
         long agentId = resolveAgent(message.tenantId(), message.channel(), message.chatType(), message.text());
         Map<String, Object> conversation = resolveConversation(message, agentId);
         String cleanedText = stripMention(message.text());
-        jdbc.update("UPDATE channel_delivery SET status='processing',agent_id=?,attempt_count=1,updated_at=NOW() WHERE id=?",
+        jdbc.update("UPDATE channel_delivery SET agent_id=?,updated_at=NOW() WHERE id=?",
                 agentId, deliveryId);
 
         StringBuilder reply = new StringBuilder();
@@ -115,8 +146,7 @@ public class ChannelOperationsService {
 
         if (failure.get() != null) {
             String error = safe(failure.get());
-            jdbc.update("UPDATE channel_delivery SET status='dead_letter',last_error=?,updated_at=NOW() WHERE id=?", error, deliveryId);
-            return Map.of("duplicate", false, "deliveryId", deliveryId, "status", "dead_letter", "error", error);
+            throw new IllegalStateException(error, failure.get());
         }
 
         Map<String, Object> response = new LinkedHashMap<>();
@@ -126,39 +156,31 @@ public class ChannelOperationsService {
         jdbc.update("UPDATE channel_delivery SET status='delivered',response_payload=?::jsonb,receipt_at=NOW(),updated_at=NOW() WHERE id=?",
                 json(response), deliveryId);
 
-        Map<String, Object> outbound = Map.of();
         if (!reply.isEmpty()) {
-            outbound = enqueueAndDeliver(message.tenantId(), message.channel(), message.externalMessageId() + ":reply",
-                    message.conversationKey(), message.senderId(), agentId,
+            enqueueAndDeliver(message.tenantId(), message.channel(), message.externalMessageId() + ":reply",
+                    message.conversationKey(), message.replyTarget().isBlank() ? message.senderId() : message.replyTarget(), agentId,
                     Map.of("text", reply.toString(), "card", false, "title", "AgentHub"), null);
         }
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("duplicate", false);
-        result.put("deliveryId", deliveryId);
-        result.put("status", "delivered");
-        result.put("reply", reply.toString());
-        result.put("sessionId", conversation.get("session_id"));
-        result.put("agentId", agentId);
-        result.put("outbound", outbound);
-        return result;
     }
 
     public Map<String, Object> enqueueAndDeliver(long tenantId, String channel, String externalMessageId,
                                                   String conversationKey, String recipientId, long agentId,
                                                   Map<String, Object> payload, UUID replayedFrom) {
         requireChannel(channel);
+        Integer agentCount = jdbc.queryForObject("SELECT COUNT(*) FROM agent_definition WHERE id=? AND tenant_id=?", Integer.class, agentId, tenantId);
+        if (agentCount == null || agentCount == 0) throw new IllegalArgumentException("Agent not found in current tenant");
         UUID id = UUID.randomUUID();
         List<UUID> inserted = jdbc.query(
                 """
                 INSERT INTO channel_delivery(id,tenant_id,channel,direction,external_message_id,conversation_key,
                     agent_id,recipient_id,status,payload,replayed_from)
                 VALUES (?,?,?,?,?,?,?,?,'accepted',?::jsonb,?)
-                ON CONFLICT(channel,external_message_id,direction) DO NOTHING RETURNING id
+                ON CONFLICT(tenant_id,channel,external_message_id,direction) DO NOTHING RETURNING id
                 """, (rs, rowNum) -> rs.getObject("id", UUID.class), id, tenantId, channel, "outbound",
                 externalMessageId, conversationKey, agentId, recipientId, json(payload), replayedFrom);
         UUID actualId = inserted.isEmpty() ? jdbc.queryForObject(
-                "SELECT id FROM channel_delivery WHERE channel=? AND external_message_id=? AND direction='outbound'",
-                UUID.class, channel, externalMessageId) : id;
+                "SELECT id FROM channel_delivery WHERE tenant_id=? AND channel=? AND external_message_id=? AND direction='outbound'",
+                UUID.class, tenantId, channel, externalMessageId) : id;
         if (inserted.isEmpty()) return delivery(tenantId, Objects.requireNonNull(actualId));
         deliver(actualId);
         return delivery(tenantId, actualId);
@@ -223,6 +245,32 @@ public class ChannelOperationsService {
                 """, tenantId);
     }
 
+    public List<Map<String, Object>> bindings(long tenantId) {
+        return jdbc.queryForList("""
+                SELECT id,channel,external_account_id AS "externalAccountId",agent_id AS "agentId",enabled,
+                       created_at AS "createdAt",updated_at AS "updatedAt"
+                FROM channel_binding WHERE tenant_id=? ORDER BY channel,id
+                """, tenantId);
+    }
+
+    public Map<String, Object> saveBinding(long tenantId, Map<String, Object> body) {
+        String channel = oneOf(required(body, "channel"), Set.of("feishu", "dingtalk", "wechat"));
+        String externalAccountId = required(body, "externalAccountId");
+        long agentId = number(body.get("agentId"), -1);
+        if (agentId < 1) throw new IllegalArgumentException("agentId is required");
+        Integer agents = jdbc.queryForObject("SELECT COUNT(*) FROM agent_definition WHERE id=? AND tenant_id=?", Integer.class, agentId, tenantId);
+        if (agents == null || agents == 0) throw new IllegalArgumentException("Agent not found in current tenant");
+        List<Long> owners = jdbc.queryForList("SELECT tenant_id FROM channel_binding WHERE channel=? AND external_account_id=?", Long.class, channel, externalAccountId);
+        if (!owners.isEmpty() && owners.getFirst() != tenantId) throw new SecurityException("Channel account is owned by another tenant");
+        Long id = jdbc.queryForObject("""
+                INSERT INTO channel_binding(tenant_id,channel,external_account_id,agent_id,enabled)
+                VALUES (?,?,?,?,?) ON CONFLICT(channel,external_account_id) DO UPDATE SET
+                    tenant_id=EXCLUDED.tenant_id,agent_id=EXCLUDED.agent_id,enabled=EXCLUDED.enabled,updated_at=NOW()
+                RETURNING id
+                """, Long.class, tenantId, channel, externalAccountId, agentId, !Boolean.FALSE.equals(body.get("enabled")));
+        return bindings(tenantId).stream().filter(item -> Objects.equals(item.get("id"), id)).findFirst().orElseThrow();
+    }
+
     public Map<String, Object> saveRoute(long tenantId, Map<String, Object> body) {
         String name = required(body, "name");
         String channel = text(body.getOrDefault("channel", "*"));
@@ -283,7 +331,11 @@ public class ChannelOperationsService {
                 return ((Number) rule.get("agent_id")).longValue();
             }
         }
-        return defaultAgentId;
+        List<Long> boundAgents = jdbc.queryForList(
+                "SELECT agent_id FROM channel_binding WHERE tenant_id=? AND channel=? AND enabled=TRUE ORDER BY id LIMIT 1",
+                Long.class, tenantId, channel);
+        if (boundAgents.isEmpty()) throw new IllegalStateException("No Agent is bound to this channel account");
+        return boundAgents.getFirst();
     }
 
     private void deliver(UUID id) {
@@ -314,7 +366,7 @@ public class ChannelOperationsService {
         boolean card = Boolean.TRUE.equals(payload.get("card"));
         switch (channel) {
             case "feishu" -> sendFeishu(recipient, title, text, card);
-            case "dingtalk" -> sendDing(title, text, card);
+            case "dingtalk" -> sendDing(recipient, title, text, card);
             case "wechat" -> sendWechat(recipient, title, text, card);
             default -> throw new IllegalArgumentException("No outbound sender configured for channel: " + channel);
         }
@@ -342,12 +394,13 @@ public class ChannelOperationsService {
         }
     }
 
-    private void sendDing(String title, String text, boolean card) {
-        if (dingWebhook.isBlank()) throw new IllegalStateException("DingTalk webhook is not configured");
+    private void sendDing(String recipient, String title, String text, boolean card) {
+        String webhook = recipient.startsWith("https://") ? recipient : dingWebhook;
+        if (webhook.isBlank()) throw new IllegalStateException("DingTalk webhook is not configured");
         Object body = card ? cardTemplates(title, text).get("dingtalk")
                 : Map.of("msgtype", "text", "text", Map.of("content", text));
-        String url = dingWebhook;
-        if (!dingSecret.isBlank()) {
+        String url = webhook;
+        if (!dingSecret.isBlank() && webhook.equals(dingWebhook)) {
             try {
                 long timestamp = Instant.now().toEpochMilli();
                 Mac mac = Mac.getInstance("HmacSHA256");
@@ -449,5 +502,10 @@ public class ChannelOperationsService {
     }
 
     public record InboundMessage(long tenantId, String channel, String externalMessageId, String conversationKey,
-                                 String senderId, String chatType, String text, Map<String, Object> payload) { }
+                                 String senderId, String chatType, String text, String replyTarget,
+                                 Map<String, Object> payload) {
+        public InboundMessage {
+            replyTarget = replyTarget == null ? "" : replyTarget;
+        }
+    }
 }

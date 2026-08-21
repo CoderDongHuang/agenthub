@@ -53,6 +53,22 @@ For outbound replies, the application must have permission to send messages and 
 
 ## DingTalk
 
+The recommended production integration uses DingTalk Stream mode. Configure the enterprise internal robot's
+`DINGTALK_CLIENT_ID` (also used as `robotCode`) and `DINGTALK_CLIENT_SECRET` in the local secret store. The Python
+Runtime maintains the authenticated Stream connection and forwards verified events to Java's internal channel queue;
+Java resolves `robotCode -> tenant -> Agent` before accepting the message. No public callback URL is required.
+
+The HTTP callback below remains available for legacy webhook integrations:
+
+Production hostnames are reserved as follows once a public ingress is available:
+
+- Console and website: `https://agentmesh.asia` and `https://console.agentmesh.asia`
+- API: `https://api.agentmesh.asia`
+- HTTP callbacks: `https://callbacks.agentmesh.asia/api/channel/{provider}/callback`
+
+Do not publish A or CNAME records until the ingress load balancer or managed hosting target exists. A DNS record
+without a reachable TLS endpoint would make provider verification fail and can route users to the wrong service.
+
 Callback URL:
 
 ```text
