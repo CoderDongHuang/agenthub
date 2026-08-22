@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node scripts/sync-docs.mjs && vite",
     "build": "node scripts/sync-docs.mjs && vue-tsc -b && vite build && node scripts/compress-assets.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
@@ -23,6 +24,7 @@
     "vue-router": "^5.1.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/node": "^24.12.3",
     "@vitejs/plugin-vue": "^6.0.6",
     "@vue/tsconfig": "^0.9.1",

@@ -23,6 +23,7 @@ class AgentServiceTest {
 
     @Mock AgentDefinitionRepository agentRepository;
     @Mock AgentVersionService versionService;
+    @Mock RuntimeModelCatalogService modelCatalog;
     @InjectMocks AgentService agentService;
 
     @BeforeEach
@@ -63,6 +64,7 @@ class AgentServiceTest {
         assertEquals("published", result.getStatus());
         assertEquals(11L, result.getCurrentVersionId());
         verify(versionService).release(7L, 1L, 11L, 100);
+        verify(modelCatalog).assertPublishable("m");
     }
 
     @Test

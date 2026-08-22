@@ -8,7 +8,7 @@ const router = useRouter()
 
 <template>
   <main class="not-found">
-    <header><img src="/bg.svg" alt="AgentHub" /><strong>AgentHub</strong><PersonalizationPanel compact /></header>
+    <header><img src="/bg.svg" alt="AgentMesh" /><strong>AgentMesh</strong><PersonalizationPanel compact /></header>
     <section>
       <span>404</span>
       <h1>这条路径还没有<br>被编排进来。</h1>
@@ -32,10 +32,10 @@ const router = useRouter()
 .not-found h1 { margin-top: 18px; font-size: 59px; line-height: 1.1; }
 .not-found p { margin-top: 18px; color: var(--site-muted); font-size: 13px; }
 .not-found section > div { margin-top: 30px; display: flex; gap: 9px; }
-.not-found button { min-height: 44px; padding: 0 14px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--site-line-strong); border-radius: 7px; background: var(--site-surface); color: var(--site-ink); font: inherit; font-size: 10px; font-weight: 700; cursor: pointer; }
+.not-found button { min-height: 44px; padding: 0 14px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--site-line-strong); border-radius: 7px; background: var(--site-surface); color: var(--site-ink); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
 .not-found button:last-child { border-color: var(--site-primary); background: var(--site-primary); color: white; }
 .not-found aside { align-self: center; padding: 24px; display: flex; flex-direction: column; border: 1px solid var(--site-line); border-radius: 8px; background: var(--site-surface); }
-.not-found aside > span { margin-bottom: 10px; color: var(--site-muted); font-size: 9px; }
+.not-found aside > span { margin-bottom: 10px; color: var(--site-muted); font-size: 12px; }
 .not-found aside a { padding: 16px 0; border-bottom: 1px solid var(--site-line); color: var(--site-ink); text-decoration: none; font-size: 12px; font-weight: 700; }
 .not-found aside a:last-child { border-bottom: 0; }
 @media(max-width:700px){.not-found{grid-template-columns:1fr}.not-found h1{font-size:41px}.not-found aside{align-self:start}}

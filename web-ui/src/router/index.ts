@@ -11,7 +11,7 @@ const router = createRouter({
       path: '/',
       name: 'Home',
       component: () => import('../views/LandingView.vue'),
-      meta: { title: 'AI Agent Hub', public: true },
+      meta: { title: 'AgentMesh', public: true },
     },
     // 文档（公开）
     {

@@ -22,7 +22,7 @@ const englishTitles: Record<string, string> = {
 
 watchEffect(() => {
   const page = locale.value === 'en-US' ? englishTitles[String(route.name)] : String(route.meta.title || '')
-  document.title = page && page !== 'AI Agent Hub' ? `${page} | AgentHub` : 'AgentHub | Enterprise AI Agent Platform'
+  document.title = page && page !== 'AgentMesh' ? `${page} | AgentMesh` : 'AgentMesh | Enterprise AI Agent Control Plane'
 })
 </script>
 

@@ -16,10 +16,13 @@ public class AgentService {
 
     private final AgentDefinitionRepository agentRepository;
     private final AgentVersionService versionService;
+    private final RuntimeModelCatalogService modelCatalog;
 
-    public AgentService(AgentDefinitionRepository agentRepository, AgentVersionService versionService) {
+    public AgentService(AgentDefinitionRepository agentRepository, AgentVersionService versionService,
+                        RuntimeModelCatalogService modelCatalog) {
         this.agentRepository = agentRepository;
         this.versionService = versionService;
+        this.modelCatalog = modelCatalog;
     }
 
     public AgentDefinition create(AgentCreateRequest request, Long userId) {
@@ -67,6 +70,7 @@ public class AgentService {
 
     public AgentDefinition publish(Long id) {
         AgentDefinition agent = get(id);
+        modelCatalog.assertPublishable(agent.getModel());
         java.util.Map<String, Object> version = versionService.snapshot(requireTenant(), agent.getCreatedBy(), id,
                 "Release candidate");
         Long versionId = ((Number) version.get("id")).longValue();

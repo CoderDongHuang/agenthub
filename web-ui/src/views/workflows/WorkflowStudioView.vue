@@ -12,6 +12,8 @@ interface FlowNode { id: number; type: NodeType; title: string; detail: string; 
 interface WorkflowResource { id: number; name: string; description: string; status: string; updated_at: string; config: { version?: number; nodes?: FlowNode[] } }
 interface WorkflowExecution { id: number; status: string; started_at: string; result: { steps?: Array<{ nodeId: number; status: string }> } }
 
+const terminalExecutionStatuses = new Set(['completed', 'failed', 'cancelled', 'waiting_for_approval'])
+
 const defaultNodes: FlowNode[] = [
   { id: 1, type: 'entry', title: '客户请求', detail: 'Web 对话入口', x: 40, y: 135 },
   { id: 2, type: 'agent', title: '理赔材料助手', detail: '读取材料并判断意图', x: 250, y: 60 },
@@ -52,6 +54,16 @@ async function loadExecutions() {
   const response = await api.get(`/workspace/workflow/${workflow.value.id}/executions`) as any
   executions.value = response.data || []
 }
+async function waitForExecution(executionId: number) {
+  const deadline = Date.now() + 90_000
+  while (Date.now() < deadline) {
+    await new Promise(resolve => window.setTimeout(resolve, 750))
+    await loadExecutions()
+    const execution = executions.value.find(item => Number(item.id) === executionId)
+    if (execution && terminalExecutionStatuses.has(execution.status)) return execution
+  }
+  throw new Error('流程仍在后台执行，请稍后刷新查看结果')
+}
 async function save() {
   if (!workflow.value || saving.value) return
   saving.value = true
@@ -86,17 +98,18 @@ async function runFlow() {
     await save()
     const response = await api.post(`/workspace/workflow/${workflow.value.id}/run`, {}) as any
     if (response.code !== 200) throw new Error(response.message)
-    const completedIds = new Set((response.data?.steps || [])
+    const executionId = Number(response.data?.executionId || response.data?.id)
+    const execution = executionId ? await waitForExecution(executionId) : response.data
+    const completedIds = new Set((execution?.result?.steps || execution?.steps || [])
       .filter((step: any) => step.status === 'completed').map((step: any) => Number(step.nodeId)))
     activeStep.value = nodes.value.filter(node => completedIds.has(node.id)).length
-    await loadExecutions()
     const statusMessages: Record<string, string> = {
       completed: '流程执行完成',
       waiting_for_approval: '流程正在等待人工审批',
       queued: '节点已进入执行队列',
       failed: '流程因无效节点停止',
     }
-    const executionStatus = response.data?.status || 'queued'
+    const executionStatus = execution?.status || response.data?.status || 'queued'
     const message = statusMessages[executionStatus] || `流程状态：${executionStatus}`
     executionStatus === 'failed' ? ElMessage.error(message) : ElMessage.success(message)
   } catch (error: any) {
@@ -159,35 +172,35 @@ onMounted(load)
 .workflow-summary > div:last-child { border-right: 0; }
 .workflow-summary > div:first-child { display: grid; grid-template-columns: 44px 1fr; align-content: center; gap: 0 12px; }
 .summary-icon { grid-row: 1 / 3; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 8px; background: var(--console-primary-soft); color: var(--console-primary-dark); font-size: 20px; }
-.workflow-summary span:not(.summary-icon) { color: var(--console-muted); font-size: 10px; }
+.workflow-summary span:not(.summary-icon) { color: var(--console-muted); font-size: 12px; }
 .workflow-summary strong { margin-top: auto; font-size: 18px; }
 .workflow-summary > div:first-child strong { margin-top: 3px; font-size: 14px; }
-.workflow-summary small { margin-top: 5px; color: #8b958f; font-size: 9px; }
+.workflow-summary small { margin-top: 5px; color: #8b958f; font-size: 12px; }
 .studio-shell { height: 610px; margin-top: 16px; display: grid; grid-template-columns: 220px minmax(650px, 1fr) 250px; border: 1px solid var(--console-line); border-radius: 8px; background: white; overflow: hidden; }
 .node-palette, .property-panel { padding: 16px; background: #fbfcfa; }
 .node-palette { border-right: 1px solid var(--console-line); }
 .property-panel { border-left: 1px solid var(--console-line); }
 .studio-title { min-height: 36px; display: flex; justify-content: space-between; align-items: start; }
 .studio-title span { font-size: 12px; font-weight: 750; }
-.studio-title small { color: #929c96; font-size: 9px; }
+.studio-title small { color: #929c96; font-size: 12px; }
 .node-palette > button { width: 100%; min-height: 64px; margin-top: 8px; padding: 10px; display: grid; grid-template-columns: 28px 1fr 18px; gap: 7px; align-items: center; border: 1px solid var(--console-line); border-radius: 7px; background: white; color: var(--console-ink); font: inherit; text-align: left; cursor: pointer; }
 .node-palette > button:hover { border-color: #a9bbae; background: var(--console-primary-soft); }
 .node-palette > button > .el-icon:first-child { color: var(--console-primary); font-size: 18px; }
 .node-palette > button span { display: flex; flex-direction: column; gap: 4px; }
-.node-palette > button strong { font-size: 10px; }
-.node-palette > button small { color: var(--console-muted); font-size: 8px; line-height: 1.4; }
+.node-palette > button strong { font-size: 12px; }
+.node-palette > button small { color: var(--console-muted); font-size: 12px; line-height: 1.4; }
 .template-note { margin-top: 22px; padding: 14px; border-radius: 7px; background: var(--console-blue-soft); color: #526c7d; }
-.template-note strong { font-size: 10px; }
-.template-note p { margin-top: 7px; font-size: 9px; line-height: 1.6; }
+.template-note strong { font-size: 12px; }
+.template-note p { margin-top: 7px; font-size: 12px; line-height: 1.6; }
 .flow-canvas { min-width: 0; display: flex; flex-direction: column; overflow-x: auto; }
-.canvas-toolbar { height: 48px; flex: 0 0 48px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--console-line); color: var(--console-muted); font-size: 10px; }
-.canvas-toolbar b { display: flex; align-items: center; gap: 6px; color: #849089; font-size: 9px; font-weight: 500; }
+.canvas-toolbar { height: 48px; flex: 0 0 48px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--console-line); color: var(--console-muted); font-size: 12px; }
+.canvas-toolbar b { display: flex; align-items: center; gap: 6px; color: #849089; font-size: 12px; font-weight: 500; }
 .canvas-toolbar i { width: 6px; height: 6px; border-radius: 50%; background: var(--console-green); }
 .canvas-grid { position: relative; width: 900px; min-height: 560px; background-color: #f8faf7; background-image: radial-gradient(#d9e0da 1px, transparent 1px); background-size: 20px 20px; }
 .flow-node-card { position: absolute; width: 174px; min-height: 82px; padding: 12px 14px; display: flex; flex-direction: column; align-items: flex-start; border: 1px solid var(--console-line-strong); border-radius: 8px; background: white; color: var(--console-ink); box-shadow: 0 7px 20px rgba(48,66,56,.07); font: inherit; text-align: left; cursor: pointer; }
-.flow-node-card > span { color: var(--console-muted); font-size: 8px; }
-.flow-node-card strong { margin-top: 8px; font-size: 11px; }
-.flow-node-card small { margin-top: 4px; color: #89938d; font-size: 8px; }
+.flow-node-card > span { color: var(--console-muted); font-size: 12px; }
+.flow-node-card strong { margin-top: 8px; font-size: 12px; }
+.flow-node-card small { margin-top: 4px; color: #89938d; font-size: 12px; }
 .flow-node-card > i { position: absolute; right: 10px; top: 11px; width: 8px; height: 8px; border-radius: 50%; background: #b8c1bb; }
 .flow-node-card.agent { border-top: 3px solid var(--console-blue); }
 .flow-node-card.approval { border-top: 3px solid var(--console-yellow); }
@@ -202,17 +215,17 @@ onMounted(load)
 .connector.c4 { left: 560px; top: 144px; width: 120px; transform: rotate(90deg); }
 .connector.c5 { left: 649px; top: 262px; width: 51px; }
 .property-panel label { display: block; margin-top: 16px; }
-.property-panel label > span { display: block; margin-bottom: 7px; color: var(--console-muted); font-size: 9px; font-weight: 700; }
-.property-panel input, .property-panel textarea, .property-panel select { width: 100%; padding: 10px; border: 1px solid var(--console-line); border-radius: 6px; outline: 0; background: white; color: var(--console-ink); font: inherit; font-size: 10px; resize: none; }
+.property-panel label > span { display: block; margin-bottom: 7px; color: var(--console-muted); font-size: 12px; font-weight: 700; }
+.property-panel input, .property-panel textarea, .property-panel select { width: 100%; padding: 10px; border: 1px solid var(--console-line); border-radius: 6px; outline: 0; background: white; color: var(--console-ink); font: inherit; font-size: 12px; resize: none; }
 .property-panel input:focus, .property-panel textarea:focus { border-color: var(--console-primary); }
 .policy-toggle { margin-top: 18px; padding: 12px 0; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--console-line); border-bottom: 1px solid var(--console-line); }
 .policy-toggle > span { display: flex; flex-direction: column; gap: 4px; }
-.policy-toggle strong { font-size: 10px; }
-.policy-toggle small { color: var(--console-muted); font-size: 8px; }
+.policy-toggle strong { font-size: 12px; }
+.policy-toggle small { color: var(--console-muted); font-size: 12px; }
 .property-tip { margin-top: 18px; padding: 12px; display: flex; gap: 9px; border-radius: 7px; background: var(--console-primary-soft); color: var(--console-primary-dark); }
 .property-tip p { display: flex; flex-direction: column; gap: 4px; }
-.property-tip strong { font-size: 9px; }
-.property-tip span { font-size: 8px; line-height: 1.5; }
+.property-tip strong { font-size: 12px; }
+.property-tip span { font-size: 12px; line-height: 1.5; }
 @media (max-width: 1200px) { .studio-shell { grid-template-columns: 190px minmax(650px, 1fr); } .property-panel { display: none; } }
 @media (max-width: 760px) { .workflow-summary { grid-template-columns: 1fr 1fr; } .workflow-summary > div { border-bottom: 1px solid var(--console-line); } .workflow-summary > div:first-child { grid-column: 1 / -1; } .studio-shell { height: auto; grid-template-columns: 1fr; overflow: visible; } .node-palette { border-right: 0; border-bottom: 1px solid var(--console-line); } .flow-canvas { min-height: 520px; overflow-x: auto; } }
 </style>

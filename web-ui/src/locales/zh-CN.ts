@@ -1,5 +1,5 @@
 export default {
-  app: { title: 'AI Agent Hub', subtitle: '企业级 AI Agent 中台' },
+  app: { title: 'AgentMesh', subtitle: '企业级 AI Agent 控制平面' },
   menu: {
     dashboard: '工作台',
     agents: 'Agent 管理',

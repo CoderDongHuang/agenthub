@@ -286,9 +286,9 @@ onMounted(() => Promise.all([fetchAgents(), fetchModels()]))
 <style scoped>
 .agent-toolbar { min-height: 58px; padding: 8px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--console-line); border-bottom: 0; background: #e4e6e0; }
 .agent-toolbar .console-search { margin-left: auto; }
-.agent-count { padding: 0 10px; color: #838980; font-family: ui-monospace, monospace; font-size: 8px; }
+.agent-count { padding: 0 10px; color: #838980; font-family: ui-monospace, monospace; font-size: 12px; }
 .agent-table-shell { border: 1px solid var(--console-line); background: white; }
-.agent-table-shell :deep(.el-table__header th) { height: 46px; color: #757b72; font-size: 9px; }
+.agent-table-shell :deep(.el-table__header th) { height: 46px; color: #757b72; font-size: 12px; }
 .agent-table-shell :deep(.el-table__row td) { height: 64px; }
 .agent-table-shell :deep(.el-link) { color: var(--console-ink); font-weight: 800; }
 .agent-table-shell :deep(.el-link:hover) { color: var(--console-orange); }

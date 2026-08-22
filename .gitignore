@@ -20,6 +20,8 @@ python-engine/*.pyc
 # Node
 web-ui/node_modules/
 web-ui/dist/
+web-ui/test-results/
+web-ui/playwright-report/
 
 # Docker
 pgdata/

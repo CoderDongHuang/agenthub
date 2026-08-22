@@ -77,57 +77,57 @@ onMounted(fetchAgent)
 
 <style scoped>
 .detail-nav { min-height: 48px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; border-bottom: 1px solid var(--console-line); }
-.detail-nav button { padding: 0; display: inline-flex; align-items: center; gap: 7px; justify-self: start; border: 0; background: transparent; color: var(--console-ink); font: inherit; font-size: 9px; font-weight: 800; cursor: pointer; }
+.detail-nav button { padding: 0; display: inline-flex; align-items: center; gap: 7px; justify-self: start; border: 0; background: transparent; color: var(--console-ink); font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
 .detail-nav button:last-child { justify-self: end; }
-.detail-nav > span { color: #8c9289; font-family: ui-monospace, monospace; font-size: 7px; }
+.detail-nav > span { color: #8c9289; font-family: ui-monospace, monospace; font-size: 12px; }
 .agent-identity { min-height: 200px; display: grid; grid-template-columns: 100px minmax(280px, 1fr) 180px 230px; align-items: stretch; border: 1px solid var(--console-line); border-top: 0; background: white; }
 .agent-monogram { display: grid; place-items: center; background: var(--console-orange); color: white; font-size: 24px; font-weight: 900; }
 .agent-title { padding: 28px; }
-.agent-title > span { color: var(--console-orange); font-family: ui-monospace, monospace; font-size: 7px; }
+.agent-title > span { color: var(--console-orange); font-family: ui-monospace, monospace; font-size: 12px; }
 .agent-title h1 { margin-top: 12px; font-size: 31px; }
-.agent-title p { max-width: 560px; margin-top: 10px; color: var(--console-muted); font-size: 10px; line-height: 1.7; }
+.agent-title p { max-width: 560px; margin-top: 10px; color: var(--console-muted); font-size: 12px; line-height: 1.7; }
 .agent-state { padding: 28px 20px; display: flex; flex-direction: column; border-left: 1px solid var(--console-line); }
-.agent-state > span { color: #878d84; font-family: ui-monospace, monospace; font-size: 7px; }
-.agent-state b { margin-top: 18px; display: flex; align-items: center; gap: 7px; font-size: 10px; }
+.agent-state > span { color: #878d84; font-family: ui-monospace, monospace; font-size: 12px; }
+.agent-state b { margin-top: 18px; display: flex; align-items: center; gap: 7px; font-size: 12px; }
 .agent-state b i { width: 7px; height: 7px; background: var(--console-yellow); }
 .agent-state b.published i { background: var(--console-green); }
 .agent-state b.disabled i { background: var(--console-red); }
-.agent-state small { margin-top: auto; color: #959b92; font-size: 7px; }
+.agent-state small { margin-top: auto; color: #959b92; font-size: 12px; }
 .agent-main-action { padding: 20px; border-left: 1px solid var(--console-line); background: #f2f3ef; }
 .agent-main-action button { width: 100%; height: 100%; padding: 20px; display: grid; grid-template-columns: 30px 1fr; align-content: center; border: 0; background: var(--console-ink); color: white; font: inherit; text-align: left; cursor: pointer; }
 .agent-main-action button:hover { background: var(--console-orange); }
 .agent-main-action .el-icon { grid-row: 1 / 3; align-self: center; font-size: 20px; }
-.agent-main-action span { font-size: 11px; font-weight: 800; }
-.agent-main-action small { margin-top: 5px; color: #888f85; font-size: 7px; }
+.agent-main-action span { font-size: 12px; font-weight: 800; }
+.agent-main-action small { margin-top: 5px; color: #888f85; font-size: 12px; }
 .agent-main-action button:hover small { color: #ffd7c8; }
 .agent-blueprint { margin-top: 16px; display: grid; grid-template-columns: 1fr 300px; gap: 16px; }
 .prompt-dossier { min-width: 0; border: 1px solid var(--console-line); background: white; }
 .dossier-head { min-height: 70px; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--console-line); }
-.dossier-head span { color: var(--console-orange); font-family: ui-monospace, monospace; font-size: 7px; }
+.dossier-head span { color: var(--console-orange); font-family: ui-monospace, monospace; font-size: 12px; }
 .dossier-head h2 { margin-top: 5px; font-size: 14px; }
-.dossier-head code { color: #8e948b; font-size: 8px; }
-.prompt-dossier pre { min-height: 350px; max-height: 500px; margin: 0; padding: 26px; overflow: auto; background: #171916; color: #c8cdc5; font-family: ui-monospace, monospace; font-size: 10px; line-height: 1.8; white-space: pre-wrap; }
+.dossier-head code { color: #8e948b; font-size: 12px; }
+.prompt-dossier pre { min-height: 350px; max-height: 500px; margin: 0; padding: 26px; overflow: auto; background: #171916; color: #c8cdc5; font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.8; white-space: pre-wrap; }
 .prompt-comment { color: #5e655c; }
 .prompt-foot { min-height: 50px; padding: 0 18px; display: flex; align-items: center; gap: 24px; color: #92988f; font-family: ui-monospace, monospace; font-size: 6px; }
-.prompt-foot b { display: block; margin-top: 3px; color: var(--console-ink); font-size: 7px; }
+.prompt-foot b { display: block; margin-top: 3px; color: var(--console-ink); font-size: 12px; }
 .configuration-rail { padding: 20px; background: #dedfd9; }
-.rail-head span { color: var(--console-orange); font-family: ui-monospace, monospace; font-size: 7px; }
+.rail-head span { color: var(--console-orange); font-family: ui-monospace, monospace; font-size: 12px; }
 .rail-head strong { display: block; margin-top: 6px; font-size: 14px; }
 .config-item { min-height: 88px; padding: 16px 0; display: flex; flex-direction: column; border-bottom: 1px solid #bfc2ba; }
 .config-item > span { color: #888e85; font-family: ui-monospace, monospace; font-size: 6px; }
 .config-item strong { margin-top: auto; font-size: 12px; }
-.config-item small { margin-top: 4px; color: #858b82; font-size: 7px; }
+.config-item small { margin-top: 4px; color: #858b82; font-size: 12px; }
 .temperature-scale { height: 4px; margin-top: 9px; background: #c5c8c0; }
 .temperature-scale i { height: 100%; display: block; background: var(--console-orange); }
-.disable-action { width: 100%; min-height: 38px; margin-top: 20px; display: flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #c8a49d; background: transparent; color: var(--console-red); font: inherit; font-size: 8px; cursor: pointer; }
+.disable-action { width: 100%; min-height: 38px; margin-top: 20px; display: flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #c8a49d; background: transparent; color: var(--console-red); font: inherit; font-size: 12px; cursor: pointer; }
 .lifecycle-track { min-height: 110px; margin-top: 16px; display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--console-line); background: white; }
 .lifecycle-track div { position: relative; padding: 18px; display: grid; grid-template-columns: 28px 12px 1fr; align-content: center; border-right: 1px solid var(--console-line); }
 .lifecycle-track div:last-child { border-right: 0; }
-.lifecycle-track span { color: #969c93; font-family: ui-monospace, monospace; font-size: 7px; }
+.lifecycle-track span { color: #969c93; font-family: ui-monospace, monospace; font-size: 12px; }
 .lifecycle-track i { width: 7px; height: 7px; background: #b2b7af; }
 .lifecycle-track i.done { background: var(--console-green); }
-.lifecycle-track strong { font-size: 10px; }
-.lifecycle-track small { grid-column: 3; margin-top: 4px; color: #8c9289; font-size: 7px; }
+.lifecycle-track strong { font-size: 12px; }
+.lifecycle-track small { grid-column: 3; margin-top: 4px; color: #8c9289; font-size: 12px; }
 @media (max-width: 1000px) { .agent-identity { grid-template-columns: 80px 1fr 160px; } .agent-main-action { grid-column: 1 / -1; min-height: 110px; border-top: 1px solid var(--console-line); border-left: 0; } .agent-blueprint { grid-template-columns: 1fr; } }
 @media (max-width: 640px) { .detail-nav { grid-template-columns: 1fr auto; } .detail-nav > span { display: none; } .agent-identity { grid-template-columns: 72px 1fr; } .agent-state { grid-column: 1 / -1; min-height: 100px; border-top: 1px solid var(--console-line); border-left: 0; } .lifecycle-track { grid-template-columns: 1fr; } .lifecycle-track div { border-right: 0; border-bottom: 1px solid var(--console-line); } }
 </style>

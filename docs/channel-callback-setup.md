@@ -1,89 +1,80 @@
-# Channel Callback Setup
+# Channel and callback setup
 
-The local callback base URL is the current cpolar URL. It was verified with HTTP 200 on 2026-08-14. It is temporary and changes when cpolar is restarted.
+This document describes production channel endpoints without storing secrets. Keep all credential values in the local `.env` file or a production secret manager.
+
+## Hostname plan
+
+`agentmesh.asia` is registered and delegated to Alibaba Cloud DNS. Reserve these names after a real public ingress exists:
+
+- Site and console: `https://agentmesh.asia`, `https://console.agentmesh.asia`
+- REST API: `https://api.agentmesh.asia`
+- HTTP callbacks: `https://callbacks.agentmesh.asia/api/channel/{provider}/callback`
+
+Do not publish A or CNAME records until the load balancer, server, or managed hosting target is reachable and has a valid TLS certificate. Temporary tunnels are not production configuration.
+
+## Persistent routing
+
+Every provider account must have an enabled `channel_binding` mapping:
 
 ```text
-https://4c7b15ff.r19.vip.cpolar.cn
+provider + external account ID -> tenant -> Agent
 ```
+
+The callback is rejected when the account is not bound. Bindings are tenant-owned and cannot be claimed by another tenant.
+
+## DingTalk Stream
+
+DingTalk Stream is the recommended integration because it requires no public callback URL.
+
+- Enterprise internal application: `AgentMesh`
+- Robot code / Client ID: `dingck36tmfhta4qbvko`
+- Secret variables: `DINGTALK_CLIENT_ID`, `DINGTALK_CLIENT_SECRET`
+- Runtime: Python maintains the authenticated Stream connection and forwards events to Java over the internal authenticated API.
+
+Enable the robot's messaging capabilities and publish an application version. The Client Secret must never appear in Git, logs, screenshots, or this document. The legacy signed HTTP callback remains supported for deployments that explicitly need it.
 
 ## Feishu
 
-Callback URL:
+Required local secrets:
+
+- `FEISHU_APP_ID`
+- `FEISHU_APP_SECRET`
+- `FEISHU_ENCRYPT_KEY`
+- `FEISHU_VERIFICATION_TOKEN`
+
+After public ingress and TLS are ready, configure:
 
 ```text
-https://4c7b15ff.r19.vip.cpolar.cn/api/channel/feishu/callback
+https://callbacks.agentmesh.asia/api/channel/feishu/callback
 ```
 
-Event subscription settings:
-
-- Enable event subscription.
-- Use the encrypted event mode with the configured Verification Token and Encrypt Key.
-- Add the event `im.message.receive_v1` (receive messages).
-- For message sending, grant the application permission `im:message:send_as_bot`.
-- For reading incoming message identity/content, grant the corresponding message receive/read permission shown by the Feishu console, normally `im:message:readonly` and `im:message:receive`.
-- Publish the application version after changing permissions or events.
-
-URL verification must return JSON exactly in this shape:
-
-```json
-{"challenge":"<challenge-from-feishu>"}
-```
+Subscribe to `im.message.receive_v1`, grant receive/read/send-as-bot permissions, publish the application version, and bind the Feishu app/account ID to a tenant and Agent. Production events require the expected signature fields and a valid timestamp window.
 
 ## WeCom
 
-Receive-message URL is intentionally not configured:
+Required local secrets:
+
+- `WECHAT_CORP_ID`
+- `WECHAT_AGENT_ID`
+- `WECHAT_APP_SECRET`
+- `WECHAT_TOKEN`
+- `WECHAT_ENCODING_AES_KEY`
+
+Keep `WECHAT_CALLBACK_URL=` empty until an enterprise-owned, WeCom-verifiable HTTPS domain is available. Then configure:
 
 ```text
-WECHAT_CALLBACK_URL=
+https://callbacks.agentmesh.asia/api/channel/wechat/callback
 ```
 
-WeCom rejects callback domains owned by third-party tunnel providers. Keep `WECHAT_CALLBACK_URL` empty until an enterprise-owned and WeCom-verified HTTPS domain is available. The Corp ID, Agent ID, Secret, Token, and EncodingAESKey can remain configured locally.
+WeCom validates domain ownership and cannot be completed with localhost or an unrelated tunnel domain. Callback XML is parsed with DOCTYPE, external entities, external DTDs, and entity expansion disabled.
 
-When an eligible domain is available, configure:
+## Acceptance checklist
 
-- URL: `https://<enterprise-domain>/api/channel/wechat/callback`
-- Token: the configured `WECHAT_TOKEN`
-- EncodingAESKey: the configured `WECHAT_ENCODING_AES_KEY`
-- Message receive enabled for the application
-- Application visible to the test user or test department
+1. The public endpoint presents a trusted TLS certificate and is reachable from the provider.
+2. Missing, stale, replayed, or invalid signatures are rejected.
+3. The external account has exactly one enabled tenant/Agent binding.
+4. The callback returns quickly after durable enqueue.
+5. The worker produces an outbound reply or a traceable dead-letter record.
+6. Credentials and payload logs contain no secret values.
 
-The server validates `msg_signature`, decrypts `echostr` and encrypted XML with AES-256-CBC, verifies the Corp ID, and returns the decrypted plain-text `echostr`.
-
-For outbound replies, the application must have permission to send messages and the recipient must be within the application's visible scope.
-
-## DingTalk
-
-The recommended production integration uses DingTalk Stream mode. Configure the enterprise internal robot's
-`DINGTALK_CLIENT_ID` (also used as `robotCode`) and `DINGTALK_CLIENT_SECRET` in the local secret store. The Python
-Runtime maintains the authenticated Stream connection and forwards verified events to Java's internal channel queue;
-Java resolves `robotCode -> tenant -> Agent` before accepting the message. No public callback URL is required.
-
-The HTTP callback below remains available for legacy webhook integrations:
-
-Production hostnames are reserved as follows once a public ingress is available:
-
-- Console and website: `https://agentmesh.asia` and `https://console.agentmesh.asia`
-- API: `https://api.agentmesh.asia`
-- HTTP callbacks: `https://callbacks.agentmesh.asia/api/channel/{provider}/callback`
-
-Do not publish A or CNAME records until the ingress load balancer or managed hosting target exists. A DNS record
-without a reachable TLS endpoint would make provider verification fail and can route users to the wrong service.
-
-Callback URL:
-
-```text
-https://4c7b15ff.r19.vip.cpolar.cn/api/channel/dingtalk/callback
-```
-
-Enable the robot/application event subscription for incoming messages and configure the same signing secret as the local `DINGTALK_SIGN_SECRET`. The robot must be allowed to send messages in the target conversation. The Webhook URL is used for outbound robot messages; it is not the inbound callback URL.
-
-## Local prerequisites
-
-- Docker PostgreSQL/pgvector: `localhost:5432`
-- Redis: `localhost:6380`
-- Java API: `localhost:8080`
-- cpolar tunnel target: `http://localhost:8080`
-
-The `.env` file remains local and must not be committed.
-
-For the complete non-secret configuration inventory and test record, see `docs/全链路验收与配置清单.md`.
+See `docs/全链路验收与配置清单.md` for current non-secret status.

@@ -113,10 +113,12 @@ class AgentEngine:
                 yield self._make_response(agent_hub_pb2.ExecutionResponse.TEXT, content=demo_reply)
 
                 # 保存会话
-                history.append({"role": "user", "content": user_message})
-                history.append({"role": "assistant", "content": demo_reply})
-                session["messages"] = history[-100:]
-                await self.session_manager.save(session_id, session, request.tenant_id)
+                await self._persist_messages(
+                    session_id,
+                    session,
+                    [{"role": "user", "content": user_message}, {"role": "assistant", "content": demo_reply}],
+                    request.tenant_id,
+                )
 
                 yield self._make_response(agent_hub_pb2.ExecutionResponse.COMPLETE, content="")
                 return
@@ -263,11 +265,10 @@ class AgentEngine:
                     break
 
             # 6. 保存会话
-            history.append({"role": "user", "content": user_message})
+            new_messages = [{"role": "user", "content": user_message}]
             if full_text:
-                history.append({"role": "assistant", "content": full_text})
-            session["messages"] = history[-100:]  # 保留最近 100 条
-            await self.session_manager.save(session_id, session, request.tenant_id)
+                new_messages.append({"role": "assistant", "content": full_text})
+            await self._persist_messages(session_id, session, new_messages, request.tenant_id)
 
             # 7. 完成
             yield self._make_response(agent_hub_pb2.ExecutionResponse.COMPLETE, content="")
@@ -315,6 +316,17 @@ class AgentEngine:
             log.warning(f"无法从 Java 加载 Agent 配置: {e}，使用默认配置")
 
         return default_config
+
+    async def _persist_messages(self, session_id: str, session: Dict[str, Any],
+                                messages: List[Dict[str, Any]], tenant_id: str) -> None:
+        append = getattr(self.session_manager, "append_messages", None)
+        if append is not None:
+            await append(session_id, messages, tenant_id)
+            return
+        history = list(session.get("messages", []))
+        history.extend(messages)
+        session["messages"] = history[-100:]
+        await self.session_manager.save(session_id, session, tenant_id)
 
     def _apply_runtime_overrides(self, config: Dict[str, Any], variables: Dict[str, str]) -> Dict[str, Any]:
         """Apply the version and routing decision made by the Java control plane."""

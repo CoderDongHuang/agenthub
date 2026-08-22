@@ -207,16 +207,16 @@ onMounted(() => {
 .identity-summary { min-height: 126px; display: grid; grid-template-columns: 1.4fr repeat(3, .6fr); border: 1px solid var(--console-line); background: white; }
 .identity-summary > div { padding: 20px; display: flex; flex-direction: column; border-right: 1px solid var(--console-line); }
 .identity-summary > div:last-child { border-right: 0; }
-.identity-summary span { color: #858b82; font-family: ui-monospace, monospace; font-size: 7px; }
+.identity-summary span { color: #858b82; font-family: ui-monospace, monospace; font-size: 12px; }
 .identity-summary strong { margin-top: auto; font-size: 22px; }
-.identity-summary small { margin-top: 5px; color: #8c9289; font-size: 8px; }
+.identity-summary small { margin-top: 5px; color: #8c9289; font-size: 12px; }
 .identity-summary .identity-intro { display: grid; grid-template-columns: 36px 1fr; align-content: center; background: var(--console-ink); color: white; }
 .identity-intro .el-icon { grid-row: 1 / 4; color: var(--console-orange); font-size: 21px; }
 .identity-intro span { color: var(--console-orange); }
 .identity-intro strong { margin-top: 7px; font-size: 13px; }
 .identity-intro small { color: #7f867c; }
 .user-table-shell { margin-top: 16px; border: 1px solid var(--console-line); background: white; }
-.user-table-shell :deep(.el-table__header th) { height: 46px; color: #757b72; font-size: 9px; }
+.user-table-shell :deep(.el-table__header th) { height: 46px; color: #757b72; font-size: 12px; }
 .user-table-shell :deep(.el-table__row td) { height: 62px; }
 @media (max-width: 760px) { .identity-summary { grid-template-columns: 1fr 1fr 1fr; } .identity-intro { grid-column: 1 / -1; min-height: 110px; } }
 </style>

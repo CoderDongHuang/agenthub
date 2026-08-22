@@ -1,175 +1,101 @@
-# AI Agent Hub — 企业级 AI Agent 中台
+# AgentMesh
 
-> **定位**：不是给开发者用的框架，而是给**企业**用的 AI 基础设施。
-> 业务人员 3 分钟创建自己的 AI Agent，IT 统一管控，合规可审计。
+AgentMesh 是面向企业团队的 AI Agent 控制平面：集中管理 Agent、模型、工具、知识库、工作流、审批、审计和协作渠道。仓库同时包含可独立扩展的 Java 管理面、Python 执行面和 Vue 控制台。
 
----
+> 当前定位：本机全功能 Alpha / MVP+。核心链路已经过真实 PostgreSQL、Redis、DeepSeek 和 Microsoft Edge 验证；公网高可用、企业微信回调、外部 SSO 和双地域容灾仍需要生产基础设施，不能据此宣称生产就绪。
 
-## 🎯 一句话说清楚
+## 核心能力
 
-**企业的「AI 应用商店」** — 开发者上传 AI 工具，业务人员自己组装 Agent，管理员统一管控权限与费用，所有操作可审计。
+- Agent 生命周期：草稿、模型能力校验、发布、对话、停用与用量统计。
+- 可靠工作流：Agent、Tool、Branch、Subflow、Approval 和 Output 节点；支持租约、重试、退避、死信与重启回收。
+- RAG 与多模态：文档解析、pgvector 检索、增量索引任务、图片/音频/视频语义提取。
+- 安全治理：多租户隔离、RBAC、审批卡点、护栏、审计、KMS、API Key/HMAC 和配置诊断。
+- 协作渠道：钉钉 Stream、飞书和企业微信；外部账号通过持久化绑定路由到租户与 Agent。
+- 平台生态：MCP、开发者网关、制品签名、供应链扫描、Kubernetes 与双地域交付模板。
 
----
+## 技术栈
 
-## 👥 四类用户
+| 层 | 技术 |
+| --- | --- |
+| Web | Vue 3、TypeScript、Vite、Element Plus、Pinia、Vue Router、Playwright |
+| 管理面 | Java 21、Spring Boot 3、Spring Security、JDBC/JPA、Flyway、gRPC |
+| 执行面 | Python 3.12、FastAPI、grpcio、Redis、httpx、pytest |
+| 数据 | PostgreSQL 16、pgvector、Redis 7 |
+| 模型 | DeepSeek、OpenAI、DashScope；Anthropic/Moonshot/Zhipu/Mistral 可选 |
+| 交付 | Docker Compose、Nginx、Kustomize、Kubernetes、GitHub Actions |
 
-| 角色 | 痛点 | 解决 |
-|------|------|------|
-| **业务人员** | 有 AI 需求但不会写代码，找 IT 排期 2 周 | 表单配置，3 分钟创建 Agent |
-| **IT 管理员** | 不知道公司谁在用 AI、花了多少钱、有没有风险 | 一个面板看到所有 Agent、调用量、费用 |
-| **安全/合规官** | 担心 AI 泄露敏感数据但管不了 | 敏感操作必须审批，所有动作有审计日志 |
-| **开发者** | 每个 AI 需求都要写 CRUD + 前端 + 部署 | 只写工具函数，其他平台全包 |
+## 架构
 
----
-
-## 🧩 核心功能
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                     AI Agent Hub                         │
-├─────────────────────────────────────────────────────────┤
-│  ✅ Agent 创建：表单配置，选模型 + 写提示词 + 勾选工具     │
-│  ✅ 工具市场：开发者上传工具，业务人员一键集成             │
-│  ✅ 审批卡点：敏感操作自动触发审批流                      │
-│  ✅ 审计日志：谁、什么 Agent、调了什么、结果如何           │
-│  ✅ 多租户：按部门/组织隔离数据与权限                      │
-│  ✅ 多模型：接入 OpenAI / Claude / DeepSeek / 通义千问等   │
-│  ✅ 多渠道：企业微信 / 钉钉 / 飞书 / 网页 / API            │
-│  ✅ 费用管控：Token 消耗追踪、预算告警、调用限制            │
-└─────────────────────────────────────────────────────────┘
-```
-
----
-
-## 🏗️ 技术架构（双引擎）
-
-| 层 | 技术 | 职责 |
-|----|------|------|
-| **Web 控制台** | Vue 3 + Vite | 管理界面、Agent 创建表单、数据看板 |
-| **Java 引擎** | Spring Boot 3 + gRPC Server | 用户/权限/审批/审计/API 网关 |
-| **Python 引擎** | FastAPI + LangChain + gRPC Client | Agent 运行时、LLM 调用、RAG、工具执行 |
-| **数据库** | PostgreSQL + pgvector + Redis | 结构化数据 + 向量存储 + 缓存 |
-| **通信** | SSE + gRPC 双向流 | 浏览器接收增量响应，Java ↔ Python 实时通信 |
-
-```
-┌──────────────────────────────────────────────────────┐
-│                      前端 (Vue 3)                     │
-│          管理控制台 / Agent 创建 / 数据看板            │
-└──────────────┬────────────────────┬──────────────────┘
-               │ REST / SSE         │
-┌──────────────▼────────────────────▼──────────────────┐
-│              Java 引擎 (Spring Boot)                   │
-│  ┌──────────┬──────────┬──────────┬──────────────┐   │
-│  │ 用户管理  │ Agent管理 │ 审批引擎  │ 审计日志     │   │
-│  ├──────────┼──────────┼──────────┼──────────────┤   │
-│  │ 工具注册  │ 权限控制  │ 费用管控  │ WebSocket推送 │   │
-│  └──────────┴──────────┴──────────┴──────────────┘   │
-│                      │ gRPC 服务端                    │
-└──────────────────────┼───────────────────────────────┘
-                       │ gRPC (双向流)
-┌──────────────────────┼───────────────────────────────┐
-│                      │ gRPC 客户端                    │
-│  ┌───────────────────▼────────────────────────────┐  │
-│  │           Python 引擎 (FastAPI)                  │  │
-│  │  ┌──────────┬──────────┬───────────────────┐   │  │
-│  │  │ LLM 调用  │ RAG 检索  │ 工具执行沙箱      │   │  │
-│  │  ├──────────┼──────────┼───────────────────┤   │  │
-│  │  │ 会话管理  │ Prompt管理│ Agent 生命周期     │   │  │
-│  │  └──────────┴──────────┴───────────────────┘   │  │
-│  └────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────┘
+```text
+Microsoft Edge / API / DingTalk Stream
+                  |
+           Vue 3 Console
+                  |
+       Spring Boot control plane
+      /       |         |       \
+PostgreSQL  Redis   gRPC/HTTP   audit
+                       |
+              Python Agent runtime
+               /       |       \
+             LLM      tools    RAG
 ```
 
----
+## 本机启动
 
-## 🚀 快速开始
+先从 `.env.example` 创建本机 `.env`，设置数据库、Redis、四个彼此独立的根密钥以及至少一个模型供应商 Key。真实值不得提交到 Git。
 
-```bash
-# 0. 配置 API Key
-cp .env.example .env
-# 编辑 .env，至少填入 DEEPSEEK_API_KEY
+```powershell
+# PostgreSQL / Redis
+docker compose up -d
 
-# 1. 启动数据库
-docker-compose up -d
-
-# 2. 启动 Python Agent 运行时
+# Python Runtime
 cd python-engine
-pip install -r requirements.txt
-python main.py    # :8000 + gRPC :9091
+.\.venv\Scripts\python.exe main.py
 
-# 3. 启动 Java 控制台
+# Java control plane
+cd ..\java-console
+mvn spring-boot:run
+
+# Web console
+cd ..\web-ui
+npm install
+npm run dev
+```
+
+打开 `http://127.0.0.1:5173`。本机演示账号为 `admin / admin123`，仅限本机开发环境。
+
+## 验证
+
+```powershell
 cd java-console
-./mvnw spring-boot:run   # :8080 + gRPC :9090
+mvn test -q
 
-# 4. 启动前端
-cd web-ui
-npm install && npm run dev   # :5173
+cd ..\python-engine
+.\.venv\Scripts\python.exe -m pytest -q
+
+cd ..\web-ui
+npm run build
+npm run test:e2e
+
+cd ..
+.\python-engine\.venv\Scripts\python.exe scripts\verify_redis_sessions.py
 ```
 
-浏览器打开 `http://localhost:5173`，默认账号 `admin` / `admin123`。
+`npm run test:e2e` 使用系统 Microsoft Edge，并直接访问本机真实 Java/Python/PostgreSQL/Redis 服务，不拦截 API。运行前应确保三端和数据服务均已启动。
 
-## ✨ 功能特性
+## 文档
 
-| 模块 | 功能 |
-|------|------|
-| **运行态势中心** | 聚合 Agent、审批、工具、用户、审计、Token 使用与 Python Runtime 状态 |
-| **Agent 管理** | 表单创建 Agent，选模型、写提示词、发布上线 |
-| **多模型** | DeepSeek / GPT-4o / Claude / 通义千问，设 Key 即用 |
-| **流式对话** | SSE 实时推送，支持工具调用（计算器、搜索等） |
-| **审批卡点** | 工具分低/中/高风险，中高风险自动触发审批 |
-| **审计日志** | 全量操作记录，按时间/用户/类型筛选 |
-| **工具生态** | 开发者写 Python 丢 custom/ 目录，自动注册 + 同步到市场 |
-| **知识库 RAG** | 上传文档 → 分块索引 → 对话时自动检索注入 |
-| **多渠道** | Web 控制台 / REST API (API Key) / 网页嵌入脚本 |
+- [项目现状与改进路线](docs/项目现状与改进路线.md)
+- [全链路验收与配置清单](docs/全链路验收与配置清单.md)
+- [架构设计](docs/架构设计.md)
+- [开发者指南](docs/developer-guide.md)
+- [渠道与回调配置](docs/channel-callback-setup.md)
+- [实施计划](docs/实施计划.md)
 
-### 运行态势接口
+## 生产边界
 
-| 接口 | 所属端 | 用途 |
-|------|--------|------|
-| `GET /runtime/capabilities` | Python | 返回模型供应商配置数量、工具风险分布、RAG 索引量和运行时长，不返回任何密钥 |
-| `GET /api/platform/overview` | Java | 聚合数据库业务指标与 Python 运行时快照，供控制台首页一次加载 |
-| `GET /api/auth/me` | Java | 根据 JWT 恢复当前用户、显示名称和角色，支持刷新页面后恢复会话 |
+`agentmesh.asia` 已注册，但在公网负载均衡、服务器或托管入口和 TLS 证书就绪前不创建 A/CNAME。企业微信要求企业主体可验证的 HTTPS 回调域名；外部 OIDC/SAML、托管 PostgreSQL/Redis、Kubernetes 双地域部署和恢复压测也需在目标生产环境完成。
 
----
+## License
 
-## 📁 项目结构
-
-```
-ai-agent-hub/
-├── java-console/         # Spring Boot 控制台
-│   ├── src/main/java/
-│   │   └── com/agenthub/
-│   │       ├── controller/    # REST API
-│   │       ├── service/       # 业务逻辑
-│   │       ├── entity/        # JPA 实体
-│   │       ├── repository/    # 数据访问
-│   │       ├── grpc/          # gRPC 服务端
-│   │       └── security/      # 安全配置
-│   └── pom.xml
-├── python-engine/         # Python Agent 运行时
-│   ├── agent_runtime/
-│   │   ├── core/          # Agent 核心逻辑
-│   │   ├── tools/         # 内置工具
-│   │   ├── rag/           # RAG 检索
-│   │   └── grpc_client/   # gRPC 客户端
-│   ├── main.py
-│   └── requirements.txt
-├── web-ui/                # Vue 3 前端
-│   └── src/
-│       ├── views/         # 页面
-│       ├── components/    # 组件
-│       └── api/           # API 调用
-├── protos/                # gRPC Proto 定义
-├── docs/
-│   ├── 架构设计.md          # 架构说明书
-│   └── 实施计划.md          # 实施步骤
-├── docker-compose.yml
-└── README.md
-```
-
----
-
-## 📄 文档导航
-
-- **[架构说明书](docs/架构设计.md)** — 系统架构、数据模型、通信协议、安全设计
-- **[实施步骤](docs/实施计划.md)** — 分阶段开发计划、每个 Sprint 的具体任务
+[MIT](LICENSE)

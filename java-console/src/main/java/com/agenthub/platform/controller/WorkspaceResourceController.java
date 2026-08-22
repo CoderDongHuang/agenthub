@@ -12,6 +12,7 @@ import com.agenthub.security.CurrentUser;
 import com.agenthub.platform.service.WebhookUrlValidator;
 import com.agenthub.platform.service.WorkspaceResourceQueryService;
 import com.agenthub.platform.dto.WorkspaceResourceRequest;
+import com.agenthub.workflow.service.WorkflowAutomationService;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Pageable;
 
@@ -31,15 +32,18 @@ public class WorkspaceResourceController {
     private final CurrentUser currentUser;
     private final WebhookUrlValidator webhookUrlValidator;
     private final WorkspaceResourceQueryService queryService;
+    private final WorkflowAutomationService workflowAutomation;
 
     public WorkspaceResourceController(JdbcTemplate jdbc, ObjectMapper objectMapper,
                                        CurrentUser currentUser, WebhookUrlValidator webhookUrlValidator,
-                                       WorkspaceResourceQueryService queryService) {
+                                       WorkspaceResourceQueryService queryService,
+                                       WorkflowAutomationService workflowAutomation) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.currentUser = currentUser;
         this.webhookUrlValidator = webhookUrlValidator;
         this.queryService = queryService;
+        this.workflowAutomation = workflowAutomation;
     }
 
     @GetMapping("/{type}")
@@ -107,65 +111,11 @@ public class WorkspaceResourceController {
     @Transactional
     public ApiResponse<Map<String, Object>> runWorkflow(@PathVariable Long id,
             @RequestBody(required = false) Map<String, Object> body) {
-        Map<String, Object> resource = getResource("workflow", id);
-        Map<String, Object> config = asMap(resource.get("config"));
-        Object rawNodes = config.get("nodes");
-        if (!(rawNodes instanceof List<?> nodes) || nodes.isEmpty()) {
-            return ApiResponse.error(400, "Workflow has no executable nodes");
-        }
-
-        String idempotencyKey = body == null ? null : text(body.get("idempotencyKey"));
-        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
-            List<Map<String, Object>> existing = jdbc.queryForList(
-                    "SELECT id, status, result::text AS result, started_at FROM workspace_execution " +
-                            "WHERE tenant_id=? AND resource_id=? AND idempotency_key=?", currentUser.tenantId(), id, idempotencyKey);
-            if (!existing.isEmpty()) return ApiResponse.ok(normalizeExecution(existing.get(0)));
-        }
-        List<Map<String, Object>> steps = new ArrayList<>();
-        int order = 1;
-        for (Object rawNode : nodes) {
-            Map<String, Object> node = asMap(rawNode);
-            String nodeType = text(node.getOrDefault("type", "unknown"));
-            String title = text(node.getOrDefault("title", "Untitled node"));
-            String stepStatus = switch (nodeType) {
-                case "entry", "output", "branch" -> "completed";
-                case "approval" -> "waiting_for_approval";
-                case "agent", "tool", "subflow" -> "queued";
-                default -> "failed";
-            };
-            steps.add(Map.of(
-                    "order", order++,
-                    "nodeId", node.getOrDefault("id", order),
-                    "type", nodeType,
-                    "title", title,
-                    "status", stepStatus
-            ));
-            if (!"completed".equals(stepStatus)) {
-                break;
-            }
-        }
-        String executionStatus = text(steps.get(steps.size() - 1).get("status"));
-        Map<String, Object> result = Map.of(
-                "workflowId", id,
-                "workflowName", resource.get("name"),
-                "steps", steps,
-                "status", executionStatus
-        );
-        Long executionId = jdbc.queryForObject(
-                "INSERT INTO workspace_execution (resource_id, tenant_id, execution_type, status, result, input, " +
-                        "current_step, idempotency_key, created_by, completed_at) VALUES (?,?,'workflow_run',?,?::jsonb,?::jsonb,?,?,?," +
-                        "CASE WHEN ? = 'completed' THEN NOW() ELSE NULL END) RETURNING id",
-                Long.class, id, currentUser.tenantId(), executionStatus, toJson(result),
-                toJson(body == null ? Map.of() : body), steps.size() - 1,
-                idempotencyKey == null || idempotencyKey.isBlank() ? null : idempotencyKey,
-                currentUser.userId(), executionStatus
-        );
-        jdbc.update("INSERT INTO workflow_execution_event(execution_id,event_type,payload) VALUES (?,'started',?::jsonb)",
-                executionId, toJson(result));
-        Map<String, Object> response = new LinkedHashMap<>(result);
-        response.put("executionId", executionId);
-        response.put("startedAt", LocalDateTime.now().toString());
-        return ApiResponse.ok(response);
+        getResource("workflow", id);
+        Map<String, Object> input = body == null ? Map.of() : new LinkedHashMap<>(body);
+        String idempotencyKey = text(input.remove("idempotencyKey"));
+        return ApiResponse.ok(workflowAutomation.enqueueManual(
+                currentUser.tenantId(), currentUser.userId(), id, input, idempotencyKey));
     }
 
     @PostMapping("/workflow/executions/{executionId}/transition")

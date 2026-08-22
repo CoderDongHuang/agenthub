@@ -156,7 +156,8 @@ app.add_middleware(
 
 @app.middleware("http")
 async def protect_runtime_management(request: Request, call_next):
-    if request.url.path.startswith("/rag/") or request.url.path.startswith("/runtime/") or request.url.path == "/mcp":
+    if (request.url.path.startswith("/rag/") or request.url.path.startswith("/runtime/")
+            or request.url.path.startswith("/internal/") or request.url.path == "/mcp"):
         provided = request.headers.get("X-Internal-Token", "")
         if len(INTERNAL_API_TOKEN) < 32 or not secrets.compare_digest(provided, INTERNAL_API_TOKEN):
             return JSONResponse(status_code=401, content={"status": "error", "message": "Unauthorized"})
@@ -279,6 +280,30 @@ async def runtime_capabilities(request: Request):
         "rag": retriever_stats,
         "performance": runtime_metrics.snapshot(),
     }
+
+
+@app.post("/internal/tools/execute")
+async def execute_internal_tool(request: Request):
+    """Execute a registered tool for the authenticated Java workflow worker."""
+    try:
+        payload = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "A JSON body is required"})
+    if not isinstance(payload, dict):
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Body must be an object"})
+    tool_name = str(payload.get("toolName", "")).strip()
+    arguments = payload.get("arguments", {})
+    if not tool_name:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "toolName is required"})
+    if not isinstance(arguments, dict):
+        return JSONResponse(status_code=400, content={"status": "error", "message": "arguments must be an object"})
+    executor = get_tool_executor()
+    if executor.get_tool(tool_name) is None:
+        return JSONResponse(status_code=404, content={"status": "error", "message": "Tool not found"})
+    result = await executor.execute(tool_name, arguments)
+    if result.startswith("Error:"):
+        return JSONResponse(status_code=422, content={"status": "error", "message": result})
+    return {"status": "ok", "toolName": tool_name, "result": result}
 
 
 @app.post("/mcp")

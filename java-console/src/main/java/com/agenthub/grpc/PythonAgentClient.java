@@ -13,6 +13,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 
 @Component
@@ -74,8 +75,11 @@ public class PythonAgentClient {
                     @Override
                     public void onCompleted() {
                         log.debug("Agent 执行完成");
-                        onCompleted.run();
-                        latch.countDown();
+                        try {
+                            onCompleted.run();
+                        } finally {
+                            latch.countDown();
+                        }
                     }
                 });
 
@@ -85,9 +89,12 @@ public class PythonAgentClient {
 
         // 等待完成（最多 5 分钟）
         try {
-            latch.await(5, TimeUnit.MINUTES);
+            if (!latch.await(5, TimeUnit.MINUTES)) {
+                onError.accept(new TimeoutException("Python Agent execution timed out after 5 minutes"));
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            onError.accept(e);
         }
     }
 }

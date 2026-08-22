@@ -94,55 +94,55 @@ onMounted(fetchData)
 <style scoped>
 .approval-stats { display: grid; grid-template-columns: 170px 170px 1fr; border: 1px solid var(--console-line); background: white; }
 .approval-stat { min-height: 124px; padding: 18px; display: flex; flex-direction: column; border-right: 1px solid var(--console-line); }
-.approval-stat > span, .approval-rule > span { color: #858b82; font-family: ui-monospace, monospace; font-size: 7px; }
+.approval-stat > span, .approval-rule > span { color: #858b82; font-family: ui-monospace, monospace; font-size: 12px; }
 .approval-stat strong { margin-top: auto; font-size: 24px; }
-.approval-stat small { margin-top: 4px; color: #8c9289; font-size: 8px; }
+.approval-stat small { margin-top: 4px; color: #8c9289; font-size: 12px; }
 .approval-stat.urgent strong { color: var(--console-orange); }
 .approval-rule { padding: 20px 24px; display: grid; grid-template-columns: 34px 1fr; align-content: center; }
 .approval-rule .el-icon { grid-row: 1 / 4; color: var(--console-orange); font-size: 21px; }
 .approval-rule strong { margin-top: 7px; font-size: 13px; }
-.approval-rule small { margin-top: 5px; color: var(--console-muted); font-size: 8px; }
+.approval-rule small { margin-top: 5px; color: var(--console-muted); font-size: 12px; }
 .approval-workspace { min-height: 590px; margin-top: 16px; display: grid; grid-template-columns: 360px 1fr; border: 1px solid var(--console-line); background: white; }
 .approval-queue { border-right: 1px solid var(--console-line); background: #e9ebe5; }
 .queue-tabs { height: 52px; padding: 6px; display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--console-line); }
-.queue-tabs button { border: 0; background: transparent; color: #777d74; font: inherit; font-size: 9px; cursor: pointer; }
+.queue-tabs button { border: 0; background: transparent; color: #777d74; font: inherit; font-size: 12px; cursor: pointer; }
 .queue-tabs button.active { background: var(--console-ink); color: white; }
 .queue-tabs b { margin-left: 5px; color: var(--console-orange); }
 .queue-list > button { width: 100%; min-height: 126px; padding: 18px; display: flex; flex-direction: column; align-items: flex-start; border: 0; border-bottom: 1px solid var(--console-line); background: transparent; color: var(--console-ink); font: inherit; text-align: left; cursor: pointer; }
 .queue-list > button.active { background: white; box-shadow: inset 3px 0 0 var(--console-orange); }
-.queue-risk { display: flex; align-items: center; gap: 6px; color: #888e85; font-family: ui-monospace, monospace; font-size: 7px; text-transform: uppercase; }
+.queue-risk { display: flex; align-items: center; gap: 6px; color: #888e85; font-family: ui-monospace, monospace; font-size: 12px; text-transform: uppercase; }
 .queue-risk i { width: 6px; height: 6px; background: var(--console-yellow); }
 .queue-risk.approved i { background: var(--console-green); }
 .queue-risk.rejected i { background: var(--console-red); }
 .queue-list strong { margin-top: 11px; font-size: 12px; }
-.queue-list p { width: 100%; margin-top: 7px; overflow: hidden; color: var(--console-muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
-.queue-list small { margin-top: auto; color: #92988f; font-size: 7px; }
+.queue-list p { width: 100%; margin-top: 7px; overflow: hidden; color: var(--console-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.queue-list small { margin-top: auto; color: #92988f; font-size: 12px; }
 .queue-empty, .approval-placeholder { min-height: 420px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #8d938a; }
 .queue-empty .el-icon, .approval-placeholder .el-icon { font-size: 28px; }
-.queue-empty strong, .approval-placeholder strong { margin-top: 13px; color: var(--console-ink); font-size: 11px; }
-.queue-empty span, .approval-placeholder span { margin-top: 6px; font-size: 8px; }
+.queue-empty strong, .approval-placeholder strong { margin-top: 13px; color: var(--console-ink); font-size: 12px; }
+.queue-empty span, .approval-placeholder span { margin-top: 6px; font-size: 12px; }
 .approval-detail { padding: 28px; }
 .detail-head { display: flex; justify-content: space-between; align-items: flex-start; }
-.detail-head span, .detail-section > span { color: var(--console-orange); font-family: ui-monospace, monospace; font-size: 7px; }
+.detail-head span, .detail-section > span { color: var(--console-orange); font-family: ui-monospace, monospace; font-size: 12px; }
 .detail-head h2 { margin-top: 7px; font-size: 20px; }
-.detail-head > b { padding: 5px 8px; display: flex; align-items: center; gap: 6px; border: 1px solid var(--console-line); color: #7a8077; font-family: ui-monospace, monospace; font-size: 7px; }
+.detail-head > b { padding: 5px 8px; display: flex; align-items: center; gap: 6px; border: 1px solid var(--console-line); color: #7a8077; font-family: ui-monospace, monospace; font-size: 12px; }
 .detail-head > b i { width: 6px; height: 6px; background: var(--console-yellow); }
 .detail-head > b.approved i { background: var(--console-green); }
 .detail-head > b.rejected i { background: var(--console-red); }
 .detail-grid { margin-top: 28px; display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--console-line); border-left: 1px solid var(--console-line); }
 .detail-grid div { min-height: 76px; padding: 13px; display: flex; flex-direction: column; justify-content: flex-end; border-right: 1px solid var(--console-line); border-bottom: 1px solid var(--console-line); background: #f6f7f3; }
 .detail-grid span { color: #8b9188; font-family: ui-monospace, monospace; font-size: 6px; }
-.detail-grid strong { margin-top: 7px; overflow: hidden; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.detail-grid strong { margin-top: 7px; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .detail-section { margin-top: 24px; }
-.detail-section p { margin-top: 9px; color: var(--console-muted); font-size: 11px; line-height: 1.7; }
-.detail-section pre { max-height: 150px; margin: 9px 0 0; padding: 16px; overflow: auto; border: 1px solid var(--console-line); background: #171916; color: #aeb4ab; font-family: ui-monospace, monospace; font-size: 8px; line-height: 1.6; white-space: pre-wrap; }
+.detail-section p { margin-top: 9px; color: var(--console-muted); font-size: 12px; line-height: 1.7; }
+.detail-section pre { max-height: 150px; margin: 9px 0 0; padding: 16px; overflow: auto; border: 1px solid var(--console-line); background: #171916; color: #aeb4ab; font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
 .decision-notice { margin-top: 22px; padding: 14px; display: flex; gap: 11px; background: #fff5e1; color: #8d6514; }
 .decision-notice .el-icon { flex: 0 0 auto; margin-top: 2px; }
 .decision-notice p { display: flex; flex-direction: column; gap: 4px; }
-.decision-notice strong { font-size: 9px; }
-.decision-notice span { font-size: 8px; }
+.decision-notice strong { font-size: 12px; }
+.decision-notice span { font-size: 12px; }
 .decision-actions { margin-top: 22px; display: grid; grid-template-columns: 1fr 1.3fr; gap: 8px; }
-.decision-actions button { min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--console-line); background: white; font: inherit; font-size: 9px; font-weight: 800; cursor: pointer; }
+.decision-actions button { min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--console-line); background: white; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
 .decision-actions button.reject { color: var(--console-red); }
 .decision-actions button.approve { border-color: var(--console-ink); background: var(--console-ink); color: white; }
 .decision-actions button.approve:hover { background: var(--console-orange); border-color: var(--console-orange); }

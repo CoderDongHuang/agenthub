@@ -1,5 +1,5 @@
 export default {
-  app: { title: 'AI Agent Hub', subtitle: 'Enterprise AI Agent Platform' },
+  app: { title: 'AgentMesh', subtitle: 'Enterprise AI Agent Control Plane' },
   menu: {
     dashboard: 'Dashboard',
     agents: 'Agents',

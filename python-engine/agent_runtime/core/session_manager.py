@@ -40,6 +40,43 @@ class SessionManager:
             pipe.expire(f"agenthub:sessions:{tenant_id}", self._ttl)
             await pipe.execute()
 
+    async def append_messages(self, session_id: str, messages: list[Dict[str, Any]], tenant_id: str = "0"):
+        """Atomically append conversation messages without overwriting concurrent writers."""
+        key = self._key(tenant_id, session_id)
+        index_key = f"agenthub:sessions:{tenant_id}"
+        created_at = datetime.now(timezone.utc).isoformat()
+        script = """
+        local raw = redis.call('GET', KEYS[1])
+        local session
+        if raw then
+          session = cjson.decode(raw)
+        else
+          session = {session_id=ARGV[1], tenant_id=ARGV[2], messages={}, created_at=ARGV[3]}
+        end
+        if session.messages == nil then session.messages = {} end
+        local incoming = cjson.decode(ARGV[4])
+        for _, message in ipairs(incoming) do table.insert(session.messages, message) end
+        local maximum = tonumber(ARGV[5])
+        while #session.messages > maximum do table.remove(session.messages, 1) end
+        session.tenant_id = ARGV[2]
+        redis.call('SET', KEYS[1], cjson.encode(session), 'EX', tonumber(ARGV[6]))
+        redis.call('SADD', KEYS[2], ARGV[1])
+        redis.call('EXPIRE', KEYS[2], tonumber(ARGV[6]))
+        return #session.messages
+        """
+        return await self._redis.eval(
+            script,
+            2,
+            key,
+            index_key,
+            session_id,
+            tenant_id,
+            created_at,
+            json.dumps(messages, ensure_ascii=False),
+            self._max_messages,
+            self._ttl,
+        )
+
     async def delete(self, session_id: str, tenant_id: str = "0"):
         await self._redis.delete(self._key(tenant_id, session_id))
         await self._redis.srem(f"agenthub:sessions:{tenant_id}", session_id)

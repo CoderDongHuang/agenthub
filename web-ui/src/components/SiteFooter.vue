@@ -6,7 +6,7 @@ import { TopRight } from '@element-plus/icons-vue'
   <footer class="site-footer">
     <div class="site-footer__top">
       <div>
-        <div class="site-footer__brand"><img src="/bg.svg" alt="AgentHub" /><span>AgentHub</span></div>
+        <div class="site-footer__brand"><img src="/bg.svg" alt="AgentMesh" /><span>AgentMesh</span></div>
         <p>把模型、知识、工具与团队协作放进同一套可靠工作流，让每一次自动化都清楚、可控、可复用。</p>
       </div>
       <div class="site-footer__links">
@@ -21,7 +21,7 @@ import { TopRight } from '@element-plus/icons-vue'
       </div>
     </div>
     <div class="site-footer__bottom">
-      <span>© 2026 AgentHub</span>
+      <span>© 2026 AgentMesh</span>
       <span>Java 管理面 · Python 执行面 · Vue 工作台</span>
       <span>MIT License</span>
     </div>
